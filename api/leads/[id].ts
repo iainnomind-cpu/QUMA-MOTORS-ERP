@@ -1,47 +1,117 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getLeadById, updateLead } from './lib';
-/**
- * API Endpoint: GET /api/leads/[id] o PUT /api/leads/[id]
- * 
- * Obtiene o actualiza información de un lead específico
- * 
- * @example GET
- * GET https://tu-app.vercel.app/api/leads/uuid-del-lead
- * 
- * Response 200:
- * {
- *   "success": true,
- *   "data": {
- *     "lead_id": "uuid-here",
- *     "name": "Juan Pérez",
- *     "score": 75,
- *     "status": "Amarillo"
- *   }
- * }
- * 
- * @example PUT
- * PUT https://tu-app.vercel.app/api/leads/uuid-del-lead
- * Body:
- * {
- *   "phone": "5559876543",
- *   "timeframe": "Inmediato"
- * }
- */
+import { createClient } from '@supabase/supabase-js';
+
+// Crear cliente de Supabase
+const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+interface LeadResponse {
+  success: boolean;
+  data?: {
+    lead_id: string;
+    name: string;
+    score: number;
+    status: string;
+  };
+  error?: string;
+  message?: string;
+}
+
+// Obtener lead por ID
+async function getLeadById(leadId: string): Promise<LeadResponse> {
+  try {
+    const { data: lead, error } = await supabase
+      .from('leads')
+      .select('*')
+      .eq('id', leadId)
+      .single();
+
+    if (error || !lead) {
+      return {
+        success: false,
+        error: 'Lead no encontrado',
+        message: 'No se encontró un lead con ese ID'
+      };
+    }
+
+    return {
+      success: true,
+      data: {
+        lead_id: lead.id,
+        name: lead.name,
+        score: lead.score,
+        status: lead.status
+      }
+    };
+  } catch (error) {
+    console.error('Error al obtener lead:', error);
+    return {
+      success: false,
+      error: 'Error al obtener el lead',
+      message: error instanceof Error ? error.message : 'Error desconocido'
+    };
+  }
+}
+
+// Actualizar lead
+async function updateLead(
+  leadId: string,
+  data: Record<string, any>
+): Promise<LeadResponse> {
+  try {
+    const { data: updatedLead, error } = await supabase
+      .from('leads')
+      .update({
+        ...data,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', leadId)
+      .select()
+      .single();
+
+    if (error || !updatedLead) {
+      return {
+        success: false,
+        error: 'Error al actualizar el lead',
+        message: error?.message || 'Lead no encontrado'
+      };
+    }
+
+    return {
+      success: true,
+      data: {
+        lead_id: updatedLead.id,
+        name: updatedLead.name,
+        score: updatedLead.score,
+        status: updatedLead.status
+      },
+      message: 'Lead actualizado exitosamente'
+    };
+  } catch (error) {
+    console.error('Error al actualizar lead:', error);
+    return {
+      success: false,
+      error: 'Error inesperado al actualizar',
+      message: error instanceof Error ? error.message : 'Error desconocido'
+    };
+  }
+}
+
+// Handler principal
 export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
-  // Configurar CORS
+  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-Key');
 
-  // Manejar preflight request
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  // Obtener el ID del lead de la URL
   const { id } = req.query;
   
   if (!id || typeof id !== 'string') {
@@ -53,7 +123,7 @@ export default async function handler(
   }
 
   try {
-    // Opcional: Validar API Key
+    // Validar API Key
     const apiKey = req.headers['x-api-key'];
     const validApiKey = process.env.API_KEY;
     
@@ -97,7 +167,6 @@ export default async function handler(
       }
     }
 
-    // Método no permitido
     return res.status(405).json({
       success: false,
       error: 'Método no permitido',
