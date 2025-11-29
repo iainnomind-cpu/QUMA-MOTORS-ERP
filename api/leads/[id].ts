@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getLeadById, updateLead } from '../../src/api/leads';
-
+import { getLeadById, updateLead } from './lib';
 /**
  * API Endpoint: GET /api/leads/[id] o PUT /api/leads/[id]
  * 

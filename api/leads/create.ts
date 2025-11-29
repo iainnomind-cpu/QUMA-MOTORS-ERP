@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createLead, CreateLeadRequest } from '../../src/api/leads';
+import { createLead, CreateLeadRequest } from './lib';
 
 /**
  * API Endpoint: POST /api/leads/create
