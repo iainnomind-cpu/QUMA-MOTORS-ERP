@@ -8,39 +8,13 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 interface CatalogResponse {
   success: boolean;
-  data?: {
-    id: string;
-    model: string;
-    segment: string;
-    price_cash: number;
-    price_formatted: string;
-    stock: number;
-    test_drive_available: boolean;
-    year: number;
-    color_options: string[];
-    engine_cc: number | null;
-    engine_type: string | null;
-    max_power: string | null;
-    max_torque: string | null;
-    transmission: string | null;
-    fuel_capacity: number | null;
-    weight: number | null;
-    seat_height: number | null;
-    abs: boolean;
-    traction_control: boolean;
-    riding_modes: string[];
-    description: string | null;
-    key_features: string[];
-    image_url: string | null;
-    brochure_url: string | null;
-  };
+  data?: any;
   error?: string;
   message?: string;
 }
 
 /**
  * Normalizar nombre del modelo para búsqueda flexible
- * Ejemplos: "mt-07" -> "MT-07", "mt07" -> "MT-07", "yzfr3" -> "YZF-R3"
  */
 function normalizeModelName(input: string): string {
   return input
@@ -69,7 +43,7 @@ async function getModelInfo(modelName: string): Promise<CatalogResponse> {
       .select('*')
       .eq('active', true)
       .ilike('model', normalizedModel)
-      .single();
+      .maybeSingle();
 
     // Si no encuentra, intentar búsqueda con LIKE para coincidencias parciales
     if (error || !model) {
@@ -100,6 +74,7 @@ async function getModelInfo(modelName: string): Promise<CatalogResponse> {
         price_cash: model.price_cash,
         price_formatted: formatPrice(model.price_cash),
         stock: model.stock,
+        stock_status: model.stock > 3 ? 'Disponible' : model.stock > 0 ? 'Últimas unidades' : 'Agotado',
         test_drive_available: model.test_drive_available,
         year: model.year,
         color_options: model.color_options || [],
@@ -133,59 +108,100 @@ async function getModelInfo(modelName: string): Promise<CatalogResponse> {
 /**
  * Listar todos los modelos disponibles
  */
-async function listAllModels(): Promise<CatalogResponse[]> {
+async function listAllModels(filters: any): Promise<CatalogResponse> {
   try {
-    const { data: models, error } = await supabase
+    let query = supabase
       .from('catalog')
-      .select('model, segment, price_cash, stock, test_drive_available')
-      .eq('active', true)
-      .order('segment')
-      .order('price_cash');
+      .select('*')
+      .eq('active', true);
 
-    if (error || !models) {
-      return [{
-        success: false,
-        error: 'Error al listar modelos',
-        message: 'No se pudieron obtener los modelos del catálogo'
-      }];
+    // Aplicar filtros
+    if (filters.segment) {
+      query = query.eq('segment', filters.segment);
     }
 
-    return models.map(model => ({
+    if (filters.min_price) {
+      query = query.gte('price_cash', parseFloat(filters.min_price));
+    }
+
+    if (filters.max_price) {
+      query = query.lte('price_cash', parseFloat(filters.max_price));
+    }
+
+    if (filters.test_drive === 'true') {
+      query = query.eq('test_drive_available', true);
+    }
+
+    // Ordenar
+    query = query.order('segment').order('price_cash');
+
+    const { data: models, error } = await query;
+
+    if (error) {
+      return {
+        success: false,
+        error: 'Error al obtener el catálogo',
+        message: error.message
+      };
+    }
+
+    if (!models || models.length === 0) {
+      return {
+        success: true,
+        data: {
+          count: 0,
+          models: [],
+          message: 'No hay modelos disponibles con los filtros especificados'
+        }
+      };
+    }
+
+    // Formatear datos
+    const formattedModels = models.map(model => ({
+      id: model.id,
+      model: model.model,
+      segment: model.segment,
+      price_cash: model.price_cash,
+      price_formatted: formatPrice(model.price_cash),
+      stock: model.stock,
+      stock_status: model.stock > 3 ? 'Disponible' : model.stock > 0 ? 'Últimas unidades' : 'Agotado',
+      test_drive_available: model.test_drive_available,
+      year: model.year,
+      color_options: model.color_options || [],
+      engine_cc: model.engine_cc,
+      image_url: model.image_url,
+      brochure_url: model.brochure_url,
+      description: model.description
+    }));
+
+    // Estadísticas
+    const stats = {
+      total_models: formattedModels.length,
+      segments: [...new Set(formattedModels.map(m => m.segment))],
+      price_range: {
+        min: Math.min(...formattedModels.map(m => m.price_cash)),
+        max: Math.max(...formattedModels.map(m => m.price_cash)),
+        avg: Math.round(formattedModels.reduce((acc, m) => acc + m.price_cash, 0) / formattedModels.length)
+      },
+      total_stock: formattedModels.reduce((acc, m) => acc + m.stock, 0),
+      test_drive_available: formattedModels.filter(m => m.test_drive_available).length
+    };
+
+    return {
       success: true,
       data: {
-        id: '',
-        model: model.model,
-        segment: model.segment,
-        price_cash: model.price_cash,
-        price_formatted: formatPrice(model.price_cash),
-        stock: model.stock,
-        test_drive_available: model.test_drive_available,
-        year: 0,
-        color_options: [],
-        engine_cc: null,
-        engine_type: null,
-        max_power: null,
-        max_torque: null,
-        transmission: null,
-        fuel_capacity: null,
-        weight: null,
-        seat_height: null,
-        abs: false,
-        traction_control: false,
-        riding_modes: [],
-        description: null,
-        key_features: [],
-        image_url: null,
-        brochure_url: null
+        count: formattedModels.length,
+        stats,
+        models: formattedModels
       }
-    }));
+    };
   } catch (error) {
     console.error('Error al listar modelos:', error);
-    return [{
+    return {
       success: false,
       error: 'Error al listar modelos',
       message: error instanceof Error ? error.message : 'Error desconocido'
-    }];
+    };
   }
 }
 
@@ -212,7 +228,7 @@ export default async function handler(
   }
 
   try {
-    // Opcional: Validar API Key
+    // Validar API Key (opcional)
     const apiKey = req.headers['x-api-key'];
     const validApiKey = process.env.API_KEY;
     
@@ -224,29 +240,31 @@ export default async function handler(
       });
     }
 
-    const { model } = req.query;
+    const { model, segment, min_price, max_price, test_drive } = req.query;
 
-    // Si no se proporciona modelo, listar todos
-    if (!model || typeof model !== 'string') {
-      const models = await listAllModels();
-      return res.status(200).json({
-        success: true,
-        count: models.length,
-        models: models.map(m => m.data)
-      });
+    // Si se proporciona modelo, buscar ese modelo específico
+    if (model && typeof model === 'string') {
+      const result = await getModelInfo(model);
+      
+      if (result.success) {
+        return res.status(200).json(result);
+      } else {
+        return res.status(404).json(result);
+      }
     }
 
-    // Buscar modelo específico
-    const result = await getModelInfo(model);
+    // Si no, listar todos los modelos con filtros opcionales
+    const filters = { segment, min_price, max_price, test_drive };
+    const result = await listAllModels(filters);
 
     if (result.success) {
       return res.status(200).json(result);
     } else {
-      return res.status(404).json(result);
+      return res.status(500).json(result);
     }
 
   } catch (error) {
-    console.error('Error en /api/catalog/[model]:', error);
+    console.error('Error en /api/catalog/query:', error);
     return res.status(500).json({
       success: false,
       error: 'Error interno del servidor',
