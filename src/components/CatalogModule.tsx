@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 
 type ViewMode = 'grid' | 'table';
-type FilterSegment = 'all' | 'Deportiva' | 'Naked' | 'Doble Propósito' | 'Scooter' | 'Touring' | 'Adventure';
+type FilterSegment = 'all' | 'Deportiva' | 'Naked' | 'Doble Propósito' | 'Scooter' | 'Trabajo' | 'Street' | 'Cross/Country' | 'Carros' | 'Cuatrimoto/ATV: Deportivas' | 'Cuatrimoto/ATV: Utilitarios' | 'Nuevos lanzamientos';
 type MainView = 'motorcycles' | 'parts';
 
 export function CatalogModule() {
@@ -279,17 +279,22 @@ export function CatalogModule() {
     }
   };
 
-  const getSegmentColor = (segment: string) => {
-    switch(segment) {
-      case 'Deportiva': return 'bg-red-100 text-red-800 border-red-300';
-      case 'Naked': return 'bg-blue-100 text-blue-800 border-blue-300';
-      case 'Doble Propósito': return 'bg-green-100 text-green-800 border-green-300';
-      case 'Scooter': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-      case 'Touring': return 'bg-purple-100 text-purple-800 border-purple-300';
-      case 'Adventure': return 'bg-orange-100 text-orange-800 border-orange-300';
-      default: return 'bg-gray-100 text-gray-800 border-gray-300';
-    }
-  };
+ const getSegmentColor = (segment: string) => {
+  switch(segment) {
+    case 'Deportiva': return 'bg-red-100 text-red-800 border-red-300';
+    case 'Naked': return 'bg-blue-100 text-blue-800 border-blue-300';
+    case 'Doble Propósito': return 'bg-green-100 text-green-800 border-green-300';
+    case 'Scooter': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+    case 'Trabajo': return 'bg-amber-100 text-amber-800 border-amber-300';
+    case 'Street': return 'bg-purple-100 text-purple-800 border-purple-300';
+    case 'Cross/Country': return 'bg-orange-100 text-orange-800 border-orange-300';
+    case 'Carros': return 'bg-indigo-100 text-indigo-800 border-indigo-300';
+    case 'Cuatrimoto/ATV: Deportivas': return 'bg-pink-100 text-pink-800 border-pink-300';
+    case 'Cuatrimoto/ATV: Utilitarios': return 'bg-teal-100 text-teal-800 border-teal-300';
+    case 'Nuevos lanzamientos': return 'bg-emerald-100 text-emerald-800 border-emerald-300';
+    default: return 'bg-gray-100 text-gray-800 border-gray-300';
+  }
+};
 
   const stats = {
     total: catalog.filter(c => c.active).length,
@@ -447,7 +452,7 @@ export function CatalogModule() {
         </div>
 
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-          {['Deportiva', 'Naked', 'Doble Propósito', 'Scooter', 'Touring', 'Adventure'].map((segment) => (
+          {['Deportiva', 'Naked', 'Doble Propósito', 'Scooter', 'Trabajo', 'Street', 'Cross/Country', 'Carros', 'Cuatrimoto/ATV: Deportivas', 'Cuatrimoto/ATV: Utilitarios', 'Nuevos lanzamientos'].map((segment) => (
             <button
               key={segment}
               onClick={() => setFilterSegment(segment as FilterSegment)}
@@ -705,8 +710,13 @@ export function CatalogModule() {
                     <option value="Naked">Naked</option>
                     <option value="Doble Propósito">Doble Propósito</option>
                     <option value="Scooter">Scooter</option>
-                    <option value="Touring">Touring</option>
-                    <option value="Adventure">Adventure</option>
+                    <option value="Trabajo">Trabajo</option>
+                    <option value="Street">Street</option>
+                    <option value="Cross/Country">Cross/Country</option>
+                    <option value="Carros">Carros</option>
+                    <option value="Cuatrimoto/ATV: Deportivas">Cuatrimoto/ATV: Deportivas</option>
+                    <option value="Cuatrimoto/ATV: Utilitarios">Cuatrimoto/ATV: Utilitarios</option>
+                    <option value="Nuevos lanzamientos">Nuevos lanzamientos</option>
                   </select>
                 </div>
 
