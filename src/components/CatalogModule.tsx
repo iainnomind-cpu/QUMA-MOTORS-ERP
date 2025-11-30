@@ -451,7 +451,7 @@ export function CatalogModule() {
           </div>
         </div>
 
-        <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+        <div className="flex flex-wrap gap-2 mb-6">
           {['Deportiva', 'Naked', 'Doble Propósito', 'Scooter', 'Trabajo', 'Street', 'Cross/Country', 'Carros', 'Cuatrimoto/ATV: Deportivas', 'Cuatrimoto/ATV: Utilitarios', 'Nuevos lanzamientos'].map((segment) => (
             <button
               key={segment}
