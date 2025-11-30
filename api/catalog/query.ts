@@ -247,7 +247,11 @@ export default async function handler(
       const result = await getModelInfo(model);
       
       if (result.success) {
-        return res.status(200).json(result);
+        // Retornar datos directamente en el primer nivel para facilitar mapping en ManyChat
+        return res.status(200).json({
+          success: true,
+          ...result.data // Spread los datos al primer nivel
+        });
       } else {
         return res.status(404).json(result);
       }
