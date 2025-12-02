@@ -198,51 +198,110 @@ export function FinanceSimulator() {
   };
 
   const handleCreateRule = async () => {
+    if (!newRule.financing_type.trim()) {
+      alert('El tipo de financiamiento es obligatorio');
+      return;
+    }
+
+    if (newRule.min_term_months <= 0 || newRule.max_term_months <= 0) {
+      alert('Los plazos deben ser mayores a 0');
+      return;
+    }
+
+    if (newRule.min_term_months > newRule.max_term_months) {
+      alert('El plazo mínimo no puede ser mayor al plazo máximo');
+      return;
+    }
+
     const { error } = await supabase
       .from('financing_rules')
       .insert([{
-        ...newRule,
-        interest_rate: newRule.interest_rate / 100
+        financing_type: newRule.financing_type.trim(),
+        min_term_months: newRule.min_term_months,
+        max_term_months: newRule.max_term_months,
+        interest_rate: newRule.interest_rate / 100,
+        min_down_payment_percent: newRule.min_down_payment_percent,
+        description: newRule.description?.trim() || null,
+        active: newRule.active,
+        requires_minimum_price: false,
+        minimum_price: null,
+        fixed_down_payment_percent: null
       }]);
 
-    if (!error) {
-      setSuccessMessage('Regla de financiamiento creada');
-      setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 3000);
-      setShowRuleModal(false);
-      setNewRule({
-        financing_type: '',
-        min_term_months: 6,
-        max_term_months: 12,
-        interest_rate: 0,
-        min_down_payment_percent: 0,
-        description: '',
-        active: true
-      });
-      loadFinancingRules();
+    if (error) {
+      console.error('Error al crear regla:', error);
+      alert(`Error al crear regla: ${error.message}`);
+      return;
     }
+
+    setSuccessMessage('Regla de financiamiento creada exitosamente');
+    setShowSuccess(true);
+    setTimeout(() => setShowSuccess(false), 3000);
+    setShowRuleModal(false);
+    setNewRule({
+      financing_type: '',
+      min_term_months: 6,
+      max_term_months: 12,
+      interest_rate: 0,
+      min_down_payment_percent: 0,
+      description: '',
+      active: true
+    });
+    loadFinancingRules();
   };
 
   const handleUpdateRule = async () => {
     if (!editingRule) return;
 
+    if (!newRule.financing_type.trim()) {
+      alert('El tipo de financiamiento es obligatorio');
+      return;
+    }
+
+    if (newRule.min_term_months <= 0 || newRule.max_term_months <= 0) {
+      alert('Los plazos deben ser mayores a 0');
+      return;
+    }
+
+    if (newRule.min_term_months > newRule.max_term_months) {
+      alert('El plazo mínimo no puede ser mayor al plazo máximo');
+      return;
+    }
+
     const { error } = await supabase
       .from('financing_rules')
       .update({
-        ...newRule,
+        min_term_months: newRule.min_term_months,
+        max_term_months: newRule.max_term_months,
         interest_rate: newRule.interest_rate / 100,
+        min_down_payment_percent: newRule.min_down_payment_percent,
+        description: newRule.description?.trim() || null,
+        active: newRule.active,
         updated_at: new Date().toISOString()
       })
       .eq('id', editingRule.id);
 
-    if (!error) {
-      setSuccessMessage('Regla actualizada');
-      setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 3000);
-      setShowRuleModal(false);
-      setEditingRule(null);
-      loadFinancingRules();
+    if (error) {
+      console.error('Error al actualizar regla:', error);
+      alert(`Error al actualizar regla: ${error.message}`);
+      return;
     }
+
+    setSuccessMessage('Regla actualizada exitosamente');
+    setShowSuccess(true);
+    setTimeout(() => setShowSuccess(false), 3000);
+    setShowRuleModal(false);
+    setEditingRule(null);
+    setNewRule({
+      financing_type: '',
+      min_term_months: 6,
+      max_term_months: 12,
+      interest_rate: 0,
+      min_down_payment_percent: 0,
+      description: '',
+      active: true
+    });
+    loadFinancingRules();
   };
 
   const handleDeleteRule = async (id: string) => {
