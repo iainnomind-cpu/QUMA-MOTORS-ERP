@@ -1,368 +1,339 @@
 import { useState, useEffect } from 'react';
-import { supabase, CatalogItem } from '../lib/supabase';
-import { PartsInventoryModule } from './PartsInventoryModule';
-import {
-  Package, CheckCircle, XCircle, Plus, Edit2, Trash2, Eye, FileText,
-  Bike, TrendingUp, DollarSign, Gauge, Palette, X, Search, Filter, Wrench, Upload, Image as ImageIcon
-} from 'lucide-react';
+import { supabase, CatalogItem, FinancingRule, FinancingCampaign } from '../lib/supabase';
+import { Calculator, AlertCircle, TrendingUp, DollarSign, Calendar, Percent, Settings, Plus, Edit2, Trash2, CheckCircle, X } from 'lucide-react';
 
-type ViewMode = 'grid' | 'table';
-type FilterSegment = 'all' | 'Deportiva' | 'Naked' | 'Doble Propósito' | 'Scooter' | 'Trabajo' | 'Street' | 'Cross/Country' | 'Carros' | 'Cuatrimoto/ATV: Deportivas' | 'Cuatrimoto/ATV: Utilitarios' | 'Nuevos lanzamientos';
-type MainView = 'motorcycles' | 'parts';
+type ViewMode = 'simulator' | 'rules' | 'campaigns';
 
-export function CatalogModule() {
-  const [mainView, setMainView] = useState<MainView>('motorcycles');
+export function FinanceSimulator() {
+  const [viewMode, setViewMode] = useState<ViewMode>('simulator');
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
-  const [filterSegment, setFilterSegment] = useState<FilterSegment>('all');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [showModal, setShowModal] = useState(false);
-  const [showDetailsModal, setShowDetailsModal] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<CatalogItem | null>(null);
-  const [editingItem, setEditingItem] = useState<CatalogItem | null>(null);
+  const [financingRules, setFinancingRules] = useState<FinancingRule[]>([]);
+  const [financingCampaigns, setFinancingCampaigns] = useState<FinancingCampaign[]>([]);
+
+  const [selectedModel, setSelectedModel] = useState('');
+  const [downPayment, setDownPayment] = useState(0);
+  const [term, setTerm] = useState(12);
+  const [selectedFinancingType, setSelectedFinancingType] = useState('');
+
+  const [activeCampaign, setActiveCampaign] = useState<FinancingCampaign | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string>('');
 
-  const [formData, setFormData] = useState({
-    segment: 'Deportiva',
-    model: '',
-    price_cash: 0,
-    stock: 0,
-    test_drive_available: false,
-    year: new Date().getFullYear(),
-    color_options: '',
-    engine_cc: 0,
-    engine_type: '',
-    max_power: '',
-    max_torque: '',
-    transmission: '',
-    fuel_capacity: 0,
-    weight: 0,
-    seat_height: 0,
-    abs: false,
-    traction_control: false,
-    riding_modes: '',
+  const [showRuleModal, setShowRuleModal] = useState(false);
+  const [showCampaignModal, setShowCampaignModal] = useState(false);
+  const [editingRule, setEditingRule] = useState<FinancingRule | null>(null);
+
+  const [newRule, setNewRule] = useState({
+    financing_type: '',
+    min_term_months: 6,
+    max_term_months: 12,
+    interest_rate: 0,
+    min_down_payment_percent: 0,
     description: '',
-    key_features: '',
-    image_url: '',
-    brochure_url: '',
     active: true
   });
 
-  useEffect(() => {
-    loadCatalog();
-  }, []);
-
-  const loadCatalog = async () => {
-    const { data, error } = await supabase
-      .from('catalog')
-      .select('*')
-      .order('segment', { ascending: true });
-
-    if (!error && data) {
-      setCatalog(data);
-    }
-    setLoading(false);
-  };
-
-  const filteredCatalog = catalog.filter(item => {
-    const matchesSegment = filterSegment === 'all' || item.segment === filterSegment;
-    const matchesSearch = searchTerm === '' ||
-      item.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.segment.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesSegment && matchesSearch && item.active;
+  const [newCampaign, setNewCampaign] = useState({
+    campaign_name: '',
+    campaign_type: 'yamaha_special',
+    provider: 'Yamaha Motor Finance',
+    start_date: '',
+    end_date: '',
+    applicable_models: '',
+    min_price: 0,
+    down_payment_percent: 50,
+    term_months: 12,
+    interest_rate: 0,
+    benefits_description: '',
+    active: true,
+    priority: 0
   });
 
-  const handleOpenModal = (item?: CatalogItem) => {
-    if (item) {
-      setEditingItem(item);
-      setFormData({
-        segment: item.segment,
-        model: item.model,
-        price_cash: item.price_cash,
-        stock: item.stock,
-        test_drive_available: item.test_drive_available,
-        year: item.year,
-        color_options: item.color_options.join(', '),
-        engine_cc: item.engine_cc || 0,
-        engine_type: item.engine_type || '',
-        max_power: item.max_power || '',
-        max_torque: item.max_torque || '',
-        transmission: item.transmission || '',
-        fuel_capacity: item.fuel_capacity || 0,
-        weight: item.weight || 0,
-        seat_height: item.seat_height || 0,
-        abs: item.abs,
-        traction_control: item.traction_control,
-        riding_modes: item.riding_modes.join(', '),
-        description: item.description || '',
-        key_features: item.key_features.join(', '),
-        image_url: item.image_url || '',
-        brochure_url: item.brochure_url || '',
-        active: item.active
-      });
-      setImagePreview(item.image_url || '');
+  useEffect(() => {
+    loadAllData();
+  }, []);
+
+  useEffect(() => {
+    checkActiveCampaign();
+  }, [selectedModel, financingCampaigns, catalog]);
+
+  useEffect(() => {
+    if (financingRules.length > 0 && !selectedFinancingType) {
+      setSelectedFinancingType(financingRules[0].financing_type);
+    }
+  }, [financingRules]);
+
+  const loadAllData = async () => {
+    await Promise.all([
+      loadCatalog(),
+      loadFinancingRules(),
+      loadFinancingCampaigns()
+    ]);
+  };
+
+  const loadCatalog = async () => {
+    const { data } = await supabase
+      .from('catalog')
+      .select('*')
+      .order('price_cash', { ascending: true });
+
+    if (data) {
+      setCatalog(data);
+      if (data.length > 0) {
+        setSelectedModel(data[0].model);
+      }
+    }
+  };
+
+  const loadFinancingRules = async () => {
+    const { data } = await supabase
+      .from('financing_rules')
+      .select('*')
+      .eq('active', true)
+      .order('financing_type');
+
+    if (data) setFinancingRules(data);
+  };
+
+  const loadFinancingCampaigns = async () => {
+    const { data } = await supabase
+      .from('financing_campaigns')
+      .select('*')
+      .eq('active', true)
+      .order('priority', { ascending: false });
+
+    if (data) setFinancingCampaigns(data);
+  };
+
+  const checkActiveCampaign = () => {
+    const model = catalog.find(m => m.model === selectedModel);
+    if (!model) {
+      setActiveCampaign(null);
+      return;
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+
+    const validCampaigns = financingCampaigns.filter(campaign => {
+      const isDateValid = campaign.start_date <= today && campaign.end_date >= today;
+      const isModelApplicable = campaign.applicable_models.includes(selectedModel);
+      const isPriceValid = !campaign.min_price || model.price_cash >= campaign.min_price;
+
+      return campaign.active && isDateValid && isModelApplicable && isPriceValid;
+    });
+
+    if (validCampaigns.length > 0) {
+      setActiveCampaign(validCampaigns[0]);
+      setSelectedFinancingType('campaign');
+      setTerm(validCampaigns[0].term_months);
+      const calculatedDownPayment = (model.price_cash * validCampaigns[0].down_payment_percent) / 100;
+      setDownPayment(calculatedDownPayment);
     } else {
-      setEditingItem(null);
-      setFormData({
-        segment: 'Deportiva',
-        model: '',
-        price_cash: 0,
-        stock: 0,
-        test_drive_available: false,
-        year: new Date().getFullYear(),
-        color_options: '',
-        engine_cc: 0,
-        engine_type: '',
-        max_power: '',
-        max_torque: '',
-        transmission: '',
-        fuel_capacity: 0,
-        weight: 0,
-        seat_height: 0,
-        abs: false,
-        traction_control: false,
-        riding_modes: '',
+      setActiveCampaign(null);
+      if (selectedFinancingType === 'campaign') {
+        setSelectedFinancingType(financingRules[0]?.financing_type || '');
+      }
+    }
+  };
+
+  const getSelectedRule = (): FinancingRule | null => {
+    return financingRules.find(r => r.financing_type === selectedFinancingType) || null;
+  };
+
+  const calculateMonthlyPayment = (): number => {
+    const model = catalog.find(m => m.model === selectedModel);
+    if (!model) return 0;
+
+    if (activeCampaign && selectedFinancingType === 'campaign') {
+      if (activeCampaign.special_conditions?.hide_monthly_calculation) {
+        return 0;
+      }
+
+      const amount = model.price_cash - downPayment;
+      if (activeCampaign.interest_rate === 0) {
+        return amount / activeCampaign.term_months;
+      }
+
+      const monthlyRate = activeCampaign.interest_rate / 12;
+      return (amount * monthlyRate * Math.pow(1 + monthlyRate, activeCampaign.term_months)) /
+             (Math.pow(1 + monthlyRate, activeCampaign.term_months) - 1);
+    }
+
+    const rule = getSelectedRule();
+    if (!rule) return 0;
+
+    const amount = model.price_cash - downPayment;
+
+    if (rule.interest_rate === 0) {
+      return amount / term;
+    }
+
+    const monthlyRate = rule.interest_rate / 12;
+    return (amount * monthlyRate * Math.pow(1 + monthlyRate, term)) /
+           (Math.pow(1 + monthlyRate, term) - 1);
+  };
+
+  const saveCalculation = async () => {
+    const model = catalog.find(m => m.model === selectedModel);
+    if (!model) return;
+
+    const monthlyPayment = calculateMonthlyPayment();
+    const totalAmount = downPayment + (monthlyPayment * term);
+    const interestAmount = totalAmount - model.price_cash;
+
+    await supabase
+      .from('financing_calculations_log')
+      .insert({
+        model: selectedModel,
+        price: model.price_cash,
+        financing_type: selectedFinancingType,
+        campaign_id: activeCampaign?.id || null,
+        down_payment: downPayment,
+        term_months: term,
+        monthly_payment: monthlyPayment,
+        total_amount: totalAmount,
+        interest_amount: interestAmount,
+        calculation_source: 'simulator'
+      });
+  };
+
+  const handleCreateRule = async () => {
+    const { error } = await supabase
+      .from('financing_rules')
+      .insert([{
+        ...newRule,
+        interest_rate: newRule.interest_rate / 100
+      }]);
+
+    if (!error) {
+      setSuccessMessage('Regla de financiamiento creada');
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+      setShowRuleModal(false);
+      setNewRule({
+        financing_type: '',
+        min_term_months: 6,
+        max_term_months: 12,
+        interest_rate: 0,
+        min_down_payment_percent: 0,
         description: '',
-        key_features: '',
-        image_url: '',
-        brochure_url: '',
         active: true
       });
-      setImagePreview('');
-    }
-    setImageFile(null);
-    setShowModal(true);
-  };
-
-  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        alert('La imagen no debe superar 5MB');
-        return;
-      }
-
-      if (!['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.type)) {
-        alert('Solo se permiten archivos JPG, PNG o WEBP');
-        return;
-      }
-
-      setImageFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      loadFinancingRules();
     }
   };
 
-  const uploadImage = async (): Promise<string | null> => {
-    if (!imageFile) return null;
-
-    setUploadingImage(true);
-    try {
-      const fileExt = imageFile.name.split('.').pop();
-      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const filePath = `motorcycles/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('catalog-images')
-        .upload(filePath, imageFile);
-
-      if (uploadError) {
-        console.error('Error uploading image:', uploadError);
-        alert('Error al subir la imagen');
-        return null;
-      }
-
-      const { data } = supabase.storage
-        .from('catalog-images')
-        .getPublicUrl(filePath);
-
-      return data.publicUrl;
-    } catch (error) {
-      console.error('Error uploading image:', error);
-      alert('Error al subir la imagen');
-      return null;
-    } finally {
-      setUploadingImage(false);
-    }
-  };
-
-  const handleSubmit = async () => {
-    let finalImageUrl = formData.image_url;
-
-    if (imageFile) {
-      const uploadedUrl = await uploadImage();
-      if (uploadedUrl) {
-        finalImageUrl = uploadedUrl;
-      } else {
-        return;
-      }
-    }
-
-    const dataToSubmit = {
-      segment: formData.segment,
-      model: formData.model,
-      price_cash: formData.price_cash,
-      stock: formData.stock,
-      test_drive_available: formData.test_drive_available,
-      year: formData.year,
-      color_options: formData.color_options.split(',').map(c => c.trim()).filter(c => c),
-      engine_cc: formData.engine_cc || null,
-      engine_type: formData.engine_type || null,
-      max_power: formData.max_power || null,
-      max_torque: formData.max_torque || null,
-      transmission: formData.transmission || null,
-      fuel_capacity: formData.fuel_capacity || null,
-      weight: formData.weight || null,
-      seat_height: formData.seat_height || null,
-      abs: formData.abs,
-      traction_control: formData.traction_control,
-      riding_modes: formData.riding_modes.split(',').map(m => m.trim()).filter(m => m),
-      description: formData.description || null,
-      key_features: formData.key_features.split(',').map(f => f.trim()).filter(f => f),
-      image_url: finalImageUrl || null,
-      brochure_url: formData.brochure_url || null,
-      active: formData.active,
-      updated_at: new Date().toISOString()
-    };
-
-    if (editingItem) {
-      const { error } = await supabase
-        .from('catalog')
-        .update(dataToSubmit)
-        .eq('id', editingItem.id);
-
-      if (!error) {
-        setSuccessMessage('Modelo actualizado exitosamente');
-        setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
-      }
-    } else {
-      const { error } = await supabase
-        .from('catalog')
-        .insert([dataToSubmit]);
-
-      if (!error) {
-        setSuccessMessage('Modelo registrado exitosamente');
-        setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
-      }
-    }
-
-    setShowModal(false);
-    setEditingItem(null);
-    setImageFile(null);
-    setImagePreview('');
-    loadCatalog();
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar este modelo del catálogo?')) return;
+  const handleUpdateRule = async () => {
+    if (!editingRule) return;
 
     const { error } = await supabase
-      .from('catalog')
+      .from('financing_rules')
+      .update({
+        ...newRule,
+        interest_rate: newRule.interest_rate / 100,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', editingRule.id);
+
+    if (!error) {
+      setSuccessMessage('Regla actualizada');
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+      setShowRuleModal(false);
+      setEditingRule(null);
+      loadFinancingRules();
+    }
+  };
+
+  const handleDeleteRule = async (id: string) => {
+    if (!confirm('¿Eliminar esta regla?')) return;
+
+    const { error } = await supabase
+      .from('financing_rules')
       .update({ active: false })
       .eq('id', id);
 
     if (!error) {
-      setSuccessMessage('Modelo desactivado');
+      setSuccessMessage('Regla desactivada');
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
-      loadCatalog();
+      loadFinancingRules();
     }
   };
 
- const getSegmentColor = (segment: string) => {
-  switch(segment) {
-    case 'Deportiva': return 'bg-red-100 text-red-800 border-red-300';
-    case 'Naked': return 'bg-blue-100 text-blue-800 border-blue-300';
-    case 'Doble Propósito': return 'bg-green-100 text-green-800 border-green-300';
-    case 'Scooter': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-    case 'Trabajo': return 'bg-amber-100 text-amber-800 border-amber-300';
-    case 'Street': return 'bg-purple-100 text-purple-800 border-purple-300';
-    case 'Cross/Country': return 'bg-orange-100 text-orange-800 border-orange-300';
-    case 'Carros': return 'bg-indigo-100 text-indigo-800 border-indigo-300';
-    case 'Cuatrimoto/ATV: Deportivas': return 'bg-pink-100 text-pink-800 border-pink-300';
-    case 'Cuatrimoto/ATV: Utilitarios': return 'bg-teal-100 text-teal-800 border-teal-300';
-    case 'Nuevos lanzamientos': return 'bg-emerald-100 text-emerald-800 border-emerald-300';
-    default: return 'bg-gray-100 text-gray-800 border-gray-300';
-  }
-};
+  const handleCreateCampaign = async () => {
+    const modelsArray = newCampaign.applicable_models.split(',').map(m => m.trim()).filter(m => m);
 
-  const stats = {
-    total: catalog.filter(c => c.active).length,
-    withTestDrive: catalog.filter(c => c.active && c.test_drive_available).length,
-    totalStock: catalog.filter(c => c.active).reduce((acc, c) => acc + c.stock, 0),
-    avgPrice: Math.round(catalog.filter(c => c.active).reduce((acc, c) => acc + c.price_cash, 0) / catalog.filter(c => c.active).length)
+    const { error } = await supabase
+      .from('financing_campaigns')
+      .insert([{
+        ...newCampaign,
+        applicable_models: modelsArray,
+        interest_rate: newCampaign.interest_rate / 100,
+        special_conditions: {
+          show_promotion_banner: true,
+          hide_monthly_calculation: newCampaign.campaign_type === 'yamaha_special',
+          contact_agent: true
+        }
+      }]);
+
+    if (!error) {
+      setSuccessMessage('Campaña creada');
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+      setShowCampaignModal(false);
+      setNewCampaign({
+        campaign_name: '',
+        campaign_type: 'yamaha_special',
+        provider: 'Yamaha Motor Finance',
+        start_date: '',
+        end_date: '',
+        applicable_models: '',
+        min_price: 0,
+        down_payment_percent: 50,
+        term_months: 12,
+        interest_rate: 0,
+        benefits_description: '',
+        active: true,
+        priority: 0
+      });
+      loadFinancingCampaigns();
+    }
   };
 
-  if (loading) {
-    return <div className="text-center py-8">Cargando catálogo...</div>;
-  }
+  const handleDeleteCampaign = async (id: string) => {
+    if (!confirm('¿Eliminar esta campaña?')) return;
+
+    const { error } = await supabase
+      .from('financing_campaigns')
+      .update({ active: false })
+      .eq('id', id);
+
+    if (!error) {
+      setSuccessMessage('Campaña desactivada');
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+      loadFinancingCampaigns();
+    }
+  };
+
+  const selectedModelData = catalog.find(m => m.model === selectedModel);
+  const selectedRule = getSelectedRule();
+  const availableTerms = selectedRule
+    ? Array.from(
+        { length: (selectedRule.max_term_months - selectedRule.min_term_months) / 6 + 1 },
+        (_, i) => selectedRule.min_term_months + i * 6
+      ).filter(t => t <= selectedRule.max_term_months)
+    : [6, 12, 18, 24];
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <Package className="w-7 h-7 text-orange-600" />
-            Catálogo y Logística
-          </h2>
-          <p className="text-sm text-gray-600 mt-1">Gestión centralizada de fichas técnicas y disponibilidad</p>
-        </div>
+        <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+          <Calculator className="w-7 h-7 text-green-600" />
+          Simulador Financiero Estratégico
+        </h2>
       </div>
-
-      <div className="bg-white rounded-lg shadow-md border-2 border-gray-200">
-        <div className="flex border-b border-gray-200">
-          <button
-            onClick={() => setMainView('motorcycles')}
-            className={`flex-1 px-6 py-4 font-semibold transition-colors ${
-              mainView === 'motorcycles'
-                ? 'bg-orange-50 text-orange-700 border-b-2 border-orange-600'
-                : 'text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <div className="flex items-center justify-center gap-2">
-              <Bike className="w-5 h-5" />
-              Motocicletas
-            </div>
-          </button>
-          <button
-            onClick={() => setMainView('parts')}
-            className={`flex-1 px-6 py-4 font-semibold transition-colors ${
-              mainView === 'parts'
-                ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600'
-                : 'text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <div className="flex items-center justify-center gap-2">
-              <Wrench className="w-5 h-5" />
-              Refacciones y Accesorios
-            </div>
-          </button>
-        </div>
-
-        <div className="p-6">
-          {mainView === 'parts' ? (
-            <PartsInventoryModule />
-          ) : (
-            <div className="space-y-6">
-              <div className="flex items-center justify-end">
-                <button
-                  onClick={() => handleOpenModal()}
-                  className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-semibold transition-all"
-                >
-                  <Plus className="w-5 h-5" />
-                  Registrar Modelo
-                </button>
-              </div>
 
       {showSuccess && (
         <div className="bg-green-100 border-2 border-green-400 text-green-800 px-4 py-3 rounded-lg flex items-center gap-3">
@@ -371,861 +342,818 @@ export function CatalogModule() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg shadow-lg p-6 text-white">
-          <div className="flex items-center justify-between mb-2">
-            <Bike className="w-8 h-8 opacity-80" />
-            <div className="text-right">
-              <div className="text-3xl font-bold">{stats.total}</div>
-              <div className="text-xs opacity-90 mt-1">modelos</div>
+      <div className="bg-white rounded-lg shadow-md border-2 border-gray-200">
+        <div className="flex border-b border-gray-200">
+          <button
+            onClick={() => setViewMode('simulator')}
+            className={`flex-1 px-6 py-4 font-semibold transition-colors ${
+              viewMode === 'simulator'
+                ? 'bg-green-50 text-green-700 border-b-2 border-green-600'
+                : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <div className="flex items-center justify-center gap-2">
+              <Calculator className="w-5 h-5" />
+              Simulador
             </div>
-          </div>
-          <div className="text-sm font-semibold mt-2">Catálogo Activo</div>
-        </div>
-
-        <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white">
-          <div className="flex items-center justify-between mb-2">
-            <CheckCircle className="w-8 h-8 opacity-80" />
-            <div className="text-right">
-              <div className="text-3xl font-bold">{stats.withTestDrive}</div>
-              <div className="text-xs opacity-90 mt-1">disponibles</div>
+          </button>
+          <button
+            onClick={() => setViewMode('rules')}
+            className={`flex-1 px-6 py-4 font-semibold transition-colors ${
+              viewMode === 'rules'
+                ? 'bg-green-50 text-green-700 border-b-2 border-green-600'
+                : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <div className="flex items-center justify-center gap-2">
+              <Settings className="w-5 h-5" />
+              Reglas Fijas ({financingRules.length})
             </div>
-          </div>
-          <div className="text-sm font-semibold mt-2">Prueba de Manejo</div>
-        </div>
-
-        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white">
-          <div className="flex items-center justify-between mb-2">
-            <Package className="w-8 h-8 opacity-80" />
-            <div className="text-right">
-              <div className="text-3xl font-bold">{stats.totalStock}</div>
-              <div className="text-xs opacity-90 mt-1">unidades</div>
+          </button>
+          <button
+            onClick={() => setViewMode('campaigns')}
+            className={`flex-1 px-6 py-4 font-semibold transition-colors ${
+              viewMode === 'campaigns'
+                ? 'bg-green-50 text-green-700 border-b-2 border-green-600'
+                : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <div className="flex items-center justify-center gap-2">
+              <TrendingUp className="w-5 h-5" />
+              Campañas Variables ({financingCampaigns.length})
             </div>
-          </div>
-          <div className="text-sm font-semibold mt-2">Stock Total</div>
+          </button>
         </div>
 
-        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-lg p-6 text-white">
-          <div className="flex items-center justify-between mb-2">
-            <DollarSign className="w-8 h-8 opacity-80" />
-            <div className="text-right">
-              <div className="text-2xl font-bold">${(stats.avgPrice / 1000).toFixed(0)}K</div>
-              <div className="text-xs opacity-90 mt-1">promedio</div>
-            </div>
-          </div>
-          <div className="text-sm font-semibold mt-2">Precio Promedio</div>
-        </div>
-      </div>
+        <div className="p-6">
+          {viewMode === 'simulator' && (
+            <div className="space-y-6">
+              {catalog.length === 0 ? (
+                <div className="text-center py-12">
+                  <AlertCircle className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+                  <h3 className="text-xl font-bold text-gray-800 mb-2">No hay modelos en el catálogo</h3>
+                  <p className="text-gray-600 mb-4">
+                    Para usar el simulador financiero, primero necesitas agregar modelos al catálogo.
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    Ve al módulo de Catálogo para agregar motocicletas.
+                  </p>
+                </div>
+              ) : (
+                <>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Modelo</label>
+                      <select
+                        value={selectedModel}
+                        onChange={(e) => setSelectedModel(e.target.value)}
+                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
+                      >
+                        {catalog.map((item) => (
+                          <option key={item.id} value={item.model}>
+                            {item.model} - ${item.price_cash.toLocaleString('es-MX')} MXN
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <div className="flex flex-col md:flex-row gap-4 mb-6">
-          <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar por modelo o segmento..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
-              />
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setFilterSegment('all')}
-              className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-                filterSegment === 'all'
-                  ? 'bg-orange-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Todos
-            </button>
-            <button
-              onClick={() => setViewMode(viewMode === 'grid' ? 'table' : 'grid')}
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition-all"
-            >
-              {viewMode === 'grid' ? 'Vista Tabla' : 'Vista Tarjetas'}
-            </button>
-          </div>
-        </div>
+                  {!activeCampaign && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Plan de Financiamiento</label>
+                        <div className="space-y-2">
+                          {financingRules.map((rule) => (
+                            <label
+                              key={rule.id}
+                              className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer transition-all hover:bg-gray-50"
+                              style={{
+                                borderColor: selectedFinancingType === rule.financing_type ? '#16a34a' : '#e5e7eb',
+                                backgroundColor: selectedFinancingType === rule.financing_type ? '#f0fdf4' : 'white'
+                              }}
+                            >
+                              <input
+                                type="radio"
+                                name="financing"
+                                value={rule.financing_type}
+                                checked={selectedFinancingType === rule.financing_type}
+                                onChange={(e) => {
+                                  setSelectedFinancingType(e.target.value);
+                                  setTerm(rule.min_term_months);
+                                }}
+                                className="w-4 h-4 accent-green-600"
+                              />
+                              <div className="flex-1">
+                                <div className="text-sm font-medium text-gray-700">{rule.financing_type}</div>
+                                <div className="text-xs text-gray-500 mt-1">{rule.description}</div>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
 
-        <div className="flex flex-wrap gap-2 mb-6">
-          {['Deportiva', 'Naked', 'Doble Propósito', 'Scooter', 'Trabajo', 'Street', 'Cross/Country', 'Carros', 'Cuatrimoto/ATV: Deportivas', 'Cuatrimoto/ATV: Utilitarios', 'Nuevos lanzamientos'].map((segment) => (
-            <button
-              key={segment}
-              onClick={() => setFilterSegment(segment as FilterSegment)}
-              className={`px-3 py-1 rounded-full text-xs font-bold border-2 whitespace-nowrap transition-all ${
-                filterSegment === segment
-                  ? getSegmentColor(segment)
-                  : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              {segment}
-            </button>
-          ))}
-        </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Plazo (meses)</label>
+                        <div className="grid grid-cols-4 gap-2">
+                          {availableTerms.map((t) => (
+                            <button
+                              key={t}
+                              onClick={() => setTerm(t)}
+                              className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+                                term === t
+                                  ? 'bg-green-600 text-white shadow-lg'
+                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                              }`}
+                            >
+                              {t}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
 
-        {viewMode === 'grid' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredCatalog.map((item) => (
-              <div
-                key={item.id}
-                className="bg-white rounded-xl shadow-md border-2 border-gray-200 hover:shadow-xl transition-all overflow-hidden"
-              >
-                <div className="bg-gradient-to-br from-gray-100 to-gray-200 h-40 flex items-center justify-center">
-                  {item.image_url ? (
-                    <img src={item.image_url} alt={item.model} className="h-full w-full object-cover" />
-                  ) : (
-                    <Bike className="w-20 h-20 text-gray-400" />
+                      {selectedModelData && (
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Enganche: ${downPayment.toLocaleString('es-MX')} MXN
+                            {selectedRule && selectedRule.min_down_payment_percent > 0 && (
+                              <span className="text-xs text-orange-600 ml-2">
+                                (Mínimo: {selectedRule.min_down_payment_percent}%)
+                              </span>
+                            )}
+                          </label>
+                          <input
+                            type="range"
+                            min={selectedRule ? (selectedModelData.price_cash * selectedRule.min_down_payment_percent) / 100 : 0}
+                            max={selectedModelData.price_cash}
+                            step="5000"
+                            value={downPayment}
+                            onChange={(e) => setDownPayment(Number(e.target.value))}
+                            className="w-full h-3 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-green-600"
+                          />
+                          <div className="flex justify-between text-xs text-gray-500 mt-1">
+                            <span>
+                              ${selectedRule ? ((selectedModelData.price_cash * selectedRule.min_down_payment_percent) / 100).toLocaleString('es-MX') : '0'}
+                            </span>
+                            <span>${selectedModelData.price_cash.toLocaleString('es-MX')}</span>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
 
-                <div className="p-5">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <span className={`inline-block px-2 py-1 text-xs font-bold rounded-full border ${getSegmentColor(item.segment)}`}>
-                        {item.segment}
-                      </span>
-                      <h3 className="text-xl font-bold text-gray-800 mt-2">{item.model}</h3>
-                      <p className="text-sm text-gray-600 mt-1">{item.year}</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 mb-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Precio</span>
-                      <span className="text-lg font-bold text-green-600">
-                        ${item.price_cash.toLocaleString('es-MX')}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Stock</span>
-                      <span className={`text-sm font-bold ${
-                        item.stock > 3 ? 'text-green-600' : item.stock > 0 ? 'text-yellow-600' : 'text-red-600'
-                      }`}>
-                        {item.stock} unidades
-                      </span>
-                    </div>
-                    {item.engine_cc && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-600">Motor</span>
-                        <span className="text-sm font-semibold text-gray-800">{item.engine_cc} cc</span>
+                <div className="space-y-4">
+                  {activeCampaign ? (
+                    <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-xl p-6 border-2 border-yellow-300">
+                      <div className="flex items-start gap-3 mb-4">
+                        <AlertCircle className="w-6 h-6 text-orange-600 flex-shrink-0 mt-1" />
+                        <div>
+                          <h3 className="text-lg font-bold text-orange-900 mb-2">{activeCampaign.campaign_name}</h3>
+                          <p className="text-sm text-orange-800 leading-relaxed mb-3">
+                            {activeCampaign.benefits_description}
+                          </p>
+                        </div>
                       </div>
-                    )}
-                  </div>
 
-                  <div className="flex items-center gap-2 mb-4">
-                    {item.test_drive_available ? (
-                      <>
-                        <CheckCircle className="w-4 h-4 text-green-600" />
-                        <span className="text-xs font-medium text-green-700">Prueba disponible</span>
-                      </>
-                    ) : (
-                      <>
-                        <XCircle className="w-4 h-4 text-gray-400" />
-                        <span className="text-xs text-gray-500">Sin prueba</span>
-                      </>
-                    )}
-                  </div>
+                      <div className="bg-white rounded-lg p-4 mb-4">
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <span className="text-gray-600">Proveedor:</span>
+                            <div className="font-semibold text-gray-800">{activeCampaign.provider}</div>
+                          </div>
+                          <div>
+                            <span className="text-gray-600">Plazo:</span>
+                            <div className="font-semibold text-gray-800">{activeCampaign.term_months} meses</div>
+                          </div>
+                          <div>
+                            <span className="text-gray-600">Enganche:</span>
+                            <div className="font-semibold text-gray-800">{activeCampaign.down_payment_percent}%</div>
+                          </div>
+                          <div>
+                            <span className="text-gray-600">Interés:</span>
+                            <div className="font-semibold text-gray-800">
+                              {activeCampaign.interest_rate === 0 ? 'Sin Intereses' : `${(activeCampaign.interest_rate * 100).toFixed(2)}%`}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
 
-                  {item.color_options.length > 0 && (
-                    <div className="mb-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Palette className="w-4 h-4 text-gray-600" />
-                        <span className="text-xs font-semibold text-gray-700">Colores</span>
+                      <div className="bg-orange-100 border border-orange-300 rounded-lg p-4 text-center">
+                        <div className="text-xs text-orange-700 uppercase tracking-wide mb-1">Monto de Enganche</div>
+                        <div className="text-3xl font-bold text-orange-900">
+                          ${downPayment.toLocaleString('es-MX')}
+                        </div>
+                        <div className="text-xs text-orange-700 mt-2">
+                          Contacte a un agente para iniciar el trámite
+                        </div>
                       </div>
-                      <div className="flex flex-wrap gap-1">
-                        {item.color_options.slice(0, 3).map((color, idx) => (
-                          <span key={idx} className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-700">
-                            {color}
-                          </span>
-                        ))}
+
+                      <div className="mt-4 text-xs text-gray-600 text-center">
+                        Vigencia: {new Date(activeCampaign.start_date).toLocaleDateString('es-MX')} al {new Date(activeCampaign.end_date).toLocaleDateString('es-MX')}
                       </div>
+                    </div>
+                  ) : (
+                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border-2 border-green-200">
+                      <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                        <DollarSign className="w-5 h-5 text-green-600" />
+                        Resumen de Financiamiento
+                      </h3>
+
+                      {selectedModelData && (
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-600">Modelo:</span>
+                            <span className="text-sm font-bold text-gray-900">{selectedModelData.model}</span>
+                          </div>
+
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-600">Precio:</span>
+                            <span className="text-sm font-bold text-gray-900">
+                              ${selectedModelData.price_cash.toLocaleString('es-MX')} MXN
+                            </span>
+                          </div>
+
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-600">Enganche:</span>
+                            <span className="text-sm font-bold text-gray-900">
+                              ${downPayment.toLocaleString('es-MX')} MXN
+                            </span>
+                          </div>
+
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-600">Monto a Financiar:</span>
+                            <span className="text-sm font-bold text-gray-900">
+                              ${(selectedModelData.price_cash - downPayment).toLocaleString('es-MX')} MXN
+                            </span>
+                          </div>
+
+                          <div className="border-t-2 border-green-300 pt-3 mt-3">
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-sm text-gray-600">Plan:</span>
+                              <span className="text-sm font-bold text-gray-900">{selectedFinancingType}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-gray-600">Plazo:</span>
+                              <span className="text-sm font-bold text-gray-900">{term} meses</span>
+                            </div>
+                            {selectedRule && selectedRule.interest_rate > 0 && (
+                              <div className="flex justify-between items-center mt-2">
+                                <span className="text-sm text-gray-600">Tasa Anual:</span>
+                                <span className="text-sm font-bold text-gray-900">
+                                  {(selectedRule.interest_rate * 100).toFixed(2)}%
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="bg-green-600 rounded-lg p-4 mt-4">
+                            <div className="text-center">
+                              <div className="text-xs text-green-100 uppercase tracking-wide mb-1">Mensualidad Estimada</div>
+                              <div className="text-3xl font-bold text-white">
+                                ${Math.round(calculateMonthlyPayment()).toLocaleString('es-MX')}
+                              </div>
+                              <div className="text-xs text-green-100 mt-1">MXN/mes</div>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={saveCalculation}
+                            className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2"
+                          >
+                            <CheckCircle className="w-5 h-5" />
+                            Guardar Cálculo
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
-
-                  <div className="flex gap-2 pt-4 border-t border-gray-200">
-                    <button
-                      onClick={() => {
-                        setSelectedItem(item);
-                        setShowDetailsModal(true);
-                      }}
-                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-all"
-                    >
-                      <Eye className="w-4 h-4" />
-                      Ver
-                    </button>
-                    <button
-                      onClick={() => handleOpenModal(item)}
-                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-semibold transition-all"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                      Editar
-                    </button>
-                    <button
-                      onClick={() => handleDelete(item.id)}
-                      className="flex items-center justify-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold transition-all"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
                 </div>
               </div>
-            ))}
+
+              <div className="bg-blue-50 rounded-lg p-6 border-2 border-blue-200">
+                <h4 className="text-sm font-semibold text-blue-900 mb-3 flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5" />
+                  Sistema de Financiamiento Inteligente
+                </h4>
+                <ul className="space-y-2 text-sm text-blue-800">
+                  <li className="flex items-start gap-2">
+                    <span className="text-blue-600 font-bold">•</span>
+                    <span>Las reglas fijas codifican los planes estándar de la concesionaria (Corto Plazo Interno, Caja Colón)</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-blue-600 font-bold">•</span>
+                    <span>Las campañas variables gestionan promociones temporales de Yamaha/Banco por modelo y periodo</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-blue-600 font-bold">•</span>
+                    <span>El sistema prioriza automáticamente campañas activas vigentes sobre reglas generales</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-blue-600 font-bold">•</span>
+                    <span>Todos los cálculos se registran para análisis y seguimiento histórico</span>
+                  </li>
+                </ul>
+              </div>
+            </>
+            )}
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gradient-to-r from-orange-50 to-orange-100 border-b-2 border-orange-200">
-                <tr>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Segmento</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Modelo</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Precio</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Stock</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Motor</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Prueba</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredCatalog.map((item) => (
-                  <tr key={item.id} className="hover:bg-orange-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs font-bold rounded-full border ${getSegmentColor(item.segment)}`}>
-                        {item.segment}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-bold text-gray-900">{item.model}</div>
-                      <div className="text-xs text-gray-500">{item.year}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-semibold text-green-600">
-                        ${item.price_cash.toLocaleString('es-MX')}
+          )}
+
+          {viewMode === 'rules' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-700">Reglas de Financiamiento Fijas</h3>
+                <button
+                  onClick={() => {
+                    setEditingRule(null);
+                    setNewRule({
+                      financing_type: '',
+                      min_term_months: 6,
+                      max_term_months: 12,
+                      interest_rate: 0,
+                      min_down_payment_percent: 0,
+                      description: '',
+                      active: true
+                    });
+                    setShowRuleModal(true);
+                  }}
+                  className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold transition-all"
+                >
+                  <Plus className="w-5 h-5" />
+                  Nueva Regla
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {financingRules.map(rule => (
+                  <div key={rule.id} className="bg-white rounded-lg p-5 border-2 border-gray-200 hover:border-green-400 transition-all">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <h4 className="font-bold text-gray-800 text-lg mb-2">{rule.financing_type}</h4>
+                        <p className="text-sm text-gray-600 mb-3">{rule.description}</p>
                       </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`text-sm font-bold ${
-                        item.stock > 3 ? 'text-green-600' : item.stock > 0 ? 'text-yellow-600' : 'text-red-600'
-                      }`}>
-                        {item.stock}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-semibold text-gray-700">{item.engine_cc} cc</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {item.test_drive_available ? (
-                        <CheckCircle className="w-5 h-5 text-green-600" />
-                      ) : (
-                        <XCircle className="w-5 h-5 text-gray-400" />
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex gap-2">
                         <button
                           onClick={() => {
-                            setSelectedItem(item);
-                            setShowDetailsModal(true);
+                            setEditingRule(rule);
+                            setNewRule({
+                              financing_type: rule.financing_type,
+                              min_term_months: rule.min_term_months,
+                              max_term_months: rule.max_term_months,
+                              interest_rate: rule.interest_rate * 100,
+                              min_down_payment_percent: rule.min_down_payment_percent,
+                              description: rule.description || '',
+                              active: rule.active
+                            });
+                            setShowRuleModal(true);
                           }}
                           className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleOpenModal(item)}
-                          className="p-2 text-orange-600 hover:bg-orange-50 rounded transition-colors"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleDelete(item.id)}
+                          onClick={() => handleDeleteRule(rule.id)}
                           className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                    </div>
 
-      <div className="bg-gradient-to-br from-orange-50 to-yellow-50 rounded-lg shadow-md p-6 border-2 border-orange-200">
-        <h3 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
-          <FileText className="w-5 h-5 text-orange-600" />
-          Características del Catálogo
-        </h3>
-        <ul className="space-y-2 text-sm text-gray-700">
-          <li className="flex items-start gap-2">
-            <span className="text-orange-600 font-bold">•</span>
-            <span>Información centralizada de todos los modelos con especificaciones técnicas completas</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-orange-600 font-bold">•</span>
-            <span>Control de disponibilidad de prueba de manejo por modelo</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-orange-600 font-bold">•</span>
-            <span>La clasificación por segmento facilita la navegación y permite filtros inteligentes</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-orange-600 font-bold">•</span>
-            <span>Las fichas técnicas centralizadas reemplazan PDFs dispersos, permitiendo acceso rápido a datos</span>
-          </li>
-        </ul>
-      </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-blue-50 rounded-lg p-3">
+                        <div className="text-xs text-gray-600 mb-1 flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          Plazo
+                        </div>
+                        <div className="text-sm font-bold text-blue-600">
+                          {rule.min_term_months === rule.max_term_months
+                            ? `${rule.min_term_months} meses`
+                            : `${rule.min_term_months}-${rule.max_term_months} meses`
+                          }
+                        </div>
+                      </div>
+
+                      <div className="bg-green-50 rounded-lg p-3">
+                        <div className="text-xs text-gray-600 mb-1 flex items-center gap-1">
+                          <Percent className="w-3 h-3" />
+                          Tasa Anual
+                        </div>
+                        <div className="text-sm font-bold text-green-600">
+                          {rule.interest_rate === 0 ? 'Sin Intereses' : `${(rule.interest_rate * 100).toFixed(2)}%`}
+                        </div>
+                      </div>
+
+                      <div className="bg-orange-50 rounded-lg p-3">
+                        <div className="text-xs text-gray-600 mb-1 flex items-center gap-1">
+                          <DollarSign className="w-3 h-3" />
+                          Enganche Mín.
+                        </div>
+                        <div className="text-sm font-bold text-orange-600">
+                          {rule.min_down_payment_percent}%
+                        </div>
+                      </div>
+
+                      <div className="bg-gray-50 rounded-lg p-3">
+                        <div className="text-xs text-gray-600 mb-1">Estado</div>
+                        <div className={`text-sm font-bold ${rule.active ? 'text-green-600' : 'text-gray-400'}`}>
+                          {rule.active ? 'Activa' : 'Inactiva'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {viewMode === 'campaigns' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-700">Campañas de Financiamiento Variables</h3>
+                <button
+                  onClick={() => {
+                    setNewCampaign({
+                      campaign_name: '',
+                      campaign_type: 'yamaha_special',
+                      provider: 'Yamaha Motor Finance',
+                      start_date: '',
+                      end_date: '',
+                      applicable_models: '',
+                      min_price: 0,
+                      down_payment_percent: 50,
+                      term_months: 12,
+                      interest_rate: 0,
+                      benefits_description: '',
+                      active: true,
+                      priority: 0
+                    });
+                    setShowCampaignModal(true);
+                  }}
+                  className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-semibold transition-all"
+                >
+                  <Plus className="w-5 h-5" />
+                  Nueva Campaña
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {financingCampaigns.map(campaign => {
+                  const isCurrentlyActive = campaign.start_date <= new Date().toISOString().split('T')[0] &&
+                                           campaign.end_date >= new Date().toISOString().split('T')[0];
+
+                  return (
+                    <div key={campaign.id} className={`bg-white rounded-lg p-5 border-2 ${
+                      isCurrentlyActive ? 'border-orange-300 bg-orange-50' : 'border-gray-200'
+                    }`}>
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <h4 className="font-bold text-gray-800 text-lg">{campaign.campaign_name}</h4>
+                            {isCurrentlyActive && (
+                              <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-bold rounded border border-green-300">
+                                VIGENTE
+                              </span>
+                            )}
+                            <span className={`px-2 py-1 text-xs font-bold rounded ${
+                              campaign.priority >= 100 ? 'bg-red-100 text-red-800 border border-red-300' :
+                              campaign.priority >= 50 ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' :
+                              'bg-blue-100 text-blue-800 border border-blue-300'
+                            }`}>
+                              Prioridad: {campaign.priority}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-700 mb-3">{campaign.benefits_description}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleDeleteCampaign(campaign.id)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                        <div className="bg-blue-50 rounded-lg p-3">
+                          <div className="text-xs text-gray-600 mb-1">Proveedor</div>
+                          <div className="text-sm font-bold text-blue-600">{campaign.provider}</div>
+                        </div>
+                        <div className="bg-green-50 rounded-lg p-3">
+                          <div className="text-xs text-gray-600 mb-1">Plazo</div>
+                          <div className="text-sm font-bold text-green-600">{campaign.term_months} meses</div>
+                        </div>
+                        <div className="bg-orange-50 rounded-lg p-3">
+                          <div className="text-xs text-gray-600 mb-1">Enganche</div>
+                          <div className="text-sm font-bold text-orange-600">{campaign.down_payment_percent}%</div>
+                        </div>
+                        <div className="bg-purple-50 rounded-lg p-3">
+                          <div className="text-xs text-gray-600 mb-1">Tasa</div>
+                          <div className="text-sm font-bold text-purple-600">
+                            {campaign.interest_rate === 0 ? 'S/I' : `${(campaign.interest_rate * 100).toFixed(2)}%`}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-gray-50 rounded-lg p-3 mb-3">
+                        <div className="text-xs font-semibold text-gray-600 mb-2">MODELOS APLICABLES:</div>
+                        <div className="flex flex-wrap gap-2">
+                          {campaign.applicable_models.map((model, idx) => (
+                            <span key={idx} className="px-2 py-1 bg-white text-gray-800 rounded text-xs font-medium border border-gray-300">
+                              {model}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {campaign.min_price && (
+                        <div className="bg-yellow-50 rounded p-2 mb-3 text-xs text-yellow-800">
+                          <span className="font-semibold">Precio mínimo requerido:</span> ${campaign.min_price.toLocaleString('es-MX')} MXN
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between text-xs text-gray-600">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-3 h-3" />
+                          <span>
+                            {new Date(campaign.start_date).toLocaleDateString('es-MX')} al {new Date(campaign.end_date).toLocaleDateString('es-MX')}
+                          </span>
+                        </div>
+                        <div className={`font-semibold ${campaign.active ? 'text-green-600' : 'text-gray-400'}`}>
+                          {campaign.active ? 'Activa' : 'Inactiva'}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
       </div>
 
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 overflow-auto" onClick={() => setShowModal(false)}>
-          <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full my-8" onClick={(e) => e.stopPropagation()}>
-            <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 bg-white rounded-t-xl">
+      {showRuleModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setShowRuleModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
               <h3 className="text-xl font-bold text-gray-800">
-                {editingItem ? 'Editar Modelo' : 'Registrar Nuevo Modelo'}
+                {editingRule ? 'Editar Regla' : 'Nueva Regla de Financiamiento'}
               </h3>
-              <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700">
+              <button onClick={() => setShowRuleModal(false)} className="text-gray-500 hover:text-gray-700">
                 <X className="w-6 h-6" />
               </button>
             </div>
-
-            <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Segmento</label>
-                  <select
-                    value={formData.segment}
-                    onChange={(e) => setFormData({ ...formData, segment: e.target.value })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
-                  >
-                    <option value="Deportiva">Deportiva</option>
-                    <option value="Naked">Naked</option>
-                    <option value="Doble Propósito">Doble Propósito</option>
-                    <option value="Scooter">Scooter</option>
-                    <option value="Trabajo">Trabajo</option>
-                    <option value="Street">Street</option>
-                    <option value="Cross/Country">Cross/Country</option>
-                    <option value="Carros">Carros</option>
-                    <option value="Cuatrimoto/ATV: Deportivas">Cuatrimoto/ATV: Deportivas</option>
-                    <option value="Cuatrimoto/ATV: Utilitarios">Cuatrimoto/ATV: Utilitarios</option>
-                    <option value="Nuevos lanzamientos">Nuevos lanzamientos</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Modelo</label>
-                  <input
-                    type="text"
-                    value={formData.model}
-                    onChange={(e) => setFormData({ ...formData, model: e.target.value })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
-                    placeholder="Ej: MT-07"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Precio Contado (MXN)</label>
-                  <input
-                    type="number"
-                    value={formData.price_cash}
-                    onChange={(e) => setFormData({ ...formData, price_cash: Number(e.target.value) })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Stock Disponible</label>
-                  <input
-                    type="number"
-                    value={formData.stock}
-                    onChange={(e) => setFormData({ ...formData, stock: Number(e.target.value) })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Año</label>
-                  <input
-                    type="number"
-                    value={formData.year}
-                    onChange={(e) => setFormData({ ...formData, year: Number(e.target.value) })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Cilindraje (cc)</label>
-                  <input
-                    type="number"
-                    value={formData.engine_cc}
-                    onChange={(e) => setFormData({ ...formData, engine_cc: Number(e.target.value) })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Tipo de Motor</label>
-                  <input
-                    type="text"
-                    value={formData.engine_type}
-                    onChange={(e) => setFormData({ ...formData, engine_type: e.target.value })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
-                    placeholder="Ej: Bicilíndrico en línea"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Potencia Máxima</label>
-                  <input
-                    type="text"
-                    value={formData.max_power}
-                    onChange={(e) => setFormData({ ...formData, max_power: e.target.value })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
-                    placeholder="Ej: 73.4 HP @ 9,000 rpm"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Torque Máximo</label>
-                  <input
-                    type="text"
-                    value={formData.max_torque}
-                    onChange={(e) => setFormData({ ...formData, max_torque: e.target.value })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
-                    placeholder="Ej: 68 Nm @ 6,500 rpm"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Transmisión</label>
-                  <input
-                    type="text"
-                    value={formData.transmission}
-                    onChange={(e) => setFormData({ ...formData, transmission: e.target.value })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
-                    placeholder="Ej: 6 velocidades"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Capacidad Tanque (L)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={formData.fuel_capacity}
-                    onChange={(e) => setFormData({ ...formData, fuel_capacity: Number(e.target.value) })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Peso (kg)</label>
-                  <input
-                    type="number"
-                    value={formData.weight}
-                    onChange={(e) => setFormData({ ...formData, weight: Number(e.target.value) })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Altura Asiento (mm)</label>
-                  <input
-                    type="number"
-                    value={formData.seat_height}
-                    onChange={(e) => setFormData({ ...formData, seat_height: Number(e.target.value) })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
+            <div className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Colores Disponibles (separados por coma)</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Tipo de Financiamiento</label>
                 <input
                   type="text"
-                  value={formData.color_options}
-                  onChange={(e) => setFormData({ ...formData, color_options: e.target.value })}
-                  className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
-                  placeholder="Ej: Azul, Negro, Rojo"
+                  value={newRule.financing_type}
+                  onChange={(e) => setNewRule({ ...newRule, financing_type: e.target.value })}
+                  className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+                  placeholder="Ej: Corto Plazo Interno"
+                  disabled={!!editingRule}
                 />
               </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Modos de Manejo (separados por coma)</label>
-                <input
-                  type="text"
-                  value={formData.riding_modes}
-                  onChange={(e) => setFormData({ ...formData, riding_modes: e.target.value })}
-                  className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
-                  placeholder="Ej: Sport, Rain, Tour"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Plazo Mínimo (meses)</label>
+                  <input
+                    type="number"
+                    value={newRule.min_term_months}
+                    onChange={(e) => setNewRule({ ...newRule, min_term_months: Number(e.target.value) })}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Plazo Máximo (meses)</label>
+                  <input
+                    type="number"
+                    value={newRule.max_term_months}
+                    onChange={(e) => setNewRule({ ...newRule, max_term_months: Number(e.target.value) })}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+                  />
+                </div>
               </div>
-
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Tasa de Interés Anual (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={newRule.interest_rate}
+                    onChange={(e) => setNewRule({ ...newRule, interest_rate: Number(e.target.value) })}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+                    placeholder="Ej: 15.00 (para 15%)"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Enganche Mínimo (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={newRule.min_down_payment_percent}
+                    onChange={(e) => setNewRule({ ...newRule, min_down_payment_percent: Number(e.target.value) })}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+                  />
+                </div>
+              </div>
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Descripción</label>
                 <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none h-24"
-                  placeholder="Descripción comercial del modelo"
+                  value={newRule.description}
+                  onChange={(e) => setNewRule({ ...newRule, description: e.target.value })}
+                  className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none h-20"
+                  placeholder="Descripción del plan de financiamiento"
                 />
               </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Características Destacadas (separadas por coma)</label>
-                <textarea
-                  value={formData.key_features}
-                  onChange={(e) => setFormData({ ...formData, key_features: e.target.value })}
-                  className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none h-20"
-                  placeholder="Ej: Motor CP2, Chasis ligero, ABS, TFT Display"
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={newRule.active}
+                  onChange={(e) => setNewRule({ ...newRule, active: e.target.checked })}
+                  className="w-4 h-4"
                 />
+                <label className="text-sm font-medium text-gray-700">Regla activa</label>
               </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Imagen del Modelo</label>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-2">Opción 1: URL de imagen</label>
-                      <input
-                        type="text"
-                        value={formData.image_url}
-                        onChange={(e) => {
-                          setFormData({ ...formData, image_url: e.target.value });
-                          if (e.target.value) {
-                            setImageFile(null);
-                            setImagePreview(e.target.value);
-                          }
-                        }}
-                        className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
-                        placeholder="https://..."
-                        disabled={!!imageFile}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-2">Opción 2: Cargar desde ordenador</label>
-                      <div className="relative">
-                        <input
-                          type="file"
-                          accept="image/jpeg,image/jpg,image/png,image/webp"
-                          onChange={handleImageFileChange}
-                          className="hidden"
-                          id="image-upload"
-                          disabled={!!formData.image_url}
-                        />
-                        <label
-                          htmlFor="image-upload"
-                          className={`flex items-center justify-center gap-2 w-full px-4 py-2 border-2 border-dashed rounded-lg cursor-pointer transition-all ${
-                            formData.image_url
-                              ? 'border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed'
-                              : 'border-orange-400 hover:border-orange-500 hover:bg-orange-50 text-orange-700'
-                          }`}
-                        >
-                          <Upload className="w-5 h-5" />
-                          <span className="text-sm font-medium">
-                            {imageFile ? imageFile.name : 'Seleccionar imagen'}
-                          </span>
-                        </label>
-                      </div>
-                      {imageFile && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setImageFile(null);
-                            setImagePreview(formData.image_url || '');
-                          }}
-                          className="mt-2 text-xs text-red-600 hover:text-red-800"
-                        >
-                          Eliminar archivo seleccionado
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {imagePreview && (
-                    <div className="mt-4">
-                      <label className="block text-xs text-gray-600 mb-2">Vista previa:</label>
-                      <div className="relative w-full h-48 bg-gray-100 rounded-lg overflow-hidden border-2 border-gray-300">
-                        <img
-                          src={imagePreview}
-                          alt="Preview"
-                          className="w-full h-full object-contain"
-                          onError={() => setImagePreview('')}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  <p className="text-xs text-gray-500 mt-2">
-                    Formatos permitidos: JPG, PNG, WEBP (máx. 5MB)
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">URL Brochure/Ficha</label>
-                  <input
-                    type="text"
-                    value={formData.brochure_url}
-                    onChange={(e) => setFormData({ ...formData, brochure_url: e.target.value })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
-                    placeholder="https://..."
-                  />
-                </div>
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={editingRule ? handleUpdateRule : handleCreateRule}
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold transition-all"
+                >
+                  {editingRule ? 'Actualizar' : 'Crear'} Regla
+                </button>
+                <button
+                  onClick={() => setShowRuleModal(false)}
+                  className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={formData.test_drive_available}
-                    onChange={(e) => setFormData({ ...formData, test_drive_available: e.target.checked })}
-                    className="w-5 h-5 accent-orange-600"
-                  />
-                  <label className="text-sm font-semibold text-gray-700">Prueba de Manejo Disponible</label>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={formData.abs}
-                    onChange={(e) => setFormData({ ...formData, abs: e.target.checked })}
-                    className="w-5 h-5 accent-orange-600"
-                  />
-                  <label className="text-sm font-semibold text-gray-700">Sistema ABS</label>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={formData.traction_control}
-                    onChange={(e) => setFormData({ ...formData, traction_control: e.target.checked })}
-                    className="w-5 h-5 accent-orange-600"
-                  />
-                  <label className="text-sm font-semibold text-gray-700">Control de Tracción</label>
-                </div>
-              </div>
-            </div>
-
-            <div className="border-t border-gray-200 px-6 py-4 flex gap-3 sticky bottom-0 bg-white rounded-b-xl">
-              <button
-                onClick={handleSubmit}
-                disabled={uploadingImage}
-                className={`flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all ${
-                  uploadingImage
-                    ? 'bg-gray-400 cursor-not-allowed'
-                    : 'bg-orange-600 hover:bg-orange-700 text-white'
-                }`}
-              >
-                {uploadingImage ? (
-                  <>
-                    <Upload className="w-5 h-5 animate-pulse" />
-                    Subiendo imagen...
-                  </>
-                ) : (
-                  <>{editingItem ? 'Actualizar Modelo' : 'Registrar Modelo'}</>
-                )}
-              </button>
-              <button
-                onClick={() => setShowModal(false)}
-                disabled={uploadingImage}
-                className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Cancelar
-              </button>
             </div>
           </div>
         </div>
       )}
 
-      {showDetailsModal && selectedItem && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 overflow-auto" onClick={() => setShowDetailsModal(false)}>
-          <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full my-8" onClick={(e) => e.stopPropagation()}>
-            <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 bg-white rounded-t-xl">
-              <h3 className="text-2xl font-bold text-gray-800">{selectedItem.model}</h3>
-              <button onClick={() => setShowDetailsModal(false)} className="text-gray-500 hover:text-gray-700">
+      {showCampaignModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 overflow-auto" onClick={() => setShowCampaignModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full my-8" onClick={(e) => e.stopPropagation()}>
+            <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 bg-white">
+              <h3 className="text-xl font-bold text-gray-800">Nueva Campaña de Financiamiento</h3>
+              <button onClick={() => setShowCampaignModal(false)} className="text-gray-500 hover:text-gray-700">
                 <X className="w-6 h-6" />
               </button>
             </div>
-
-            <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
-              <div className="flex items-start gap-4">
-                <span className={`px-3 py-1 text-sm font-bold rounded-full border ${getSegmentColor(selectedItem.segment)}`}>
-                  {selectedItem.segment}
-                </span>
-                <span className="text-sm text-gray-600">{selectedItem.year}</span>
+            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Nombre de la Campaña</label>
+                <input
+                  type="text"
+                  value={newCampaign.campaign_name}
+                  onChange={(e) => setNewCampaign({ ...newCampaign, campaign_name: e.target.value })}
+                  className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
+                  placeholder="Ej: Yamaha Especial Octubre-Diciembre 2025"
+                />
               </div>
-
-              {selectedItem.description && (
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <h4 className="text-lg font-semibold text-gray-700 mb-2">Descripción</h4>
-                  <p className="text-gray-700 leading-relaxed">{selectedItem.description}</p>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-green-50 rounded-lg p-4 border border-green-200">
-                  <div className="text-xs text-gray-600 mb-1">Precio</div>
-                  <div className="text-lg font-bold text-green-600">
-                    ${selectedItem.price_cash.toLocaleString('es-MX')}
-                  </div>
-                </div>
-
-                <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-                  <div className="text-xs text-gray-600 mb-1">Stock</div>
-                  <div className="text-lg font-bold text-blue-600">{selectedItem.stock} unidades</div>
-                </div>
-
-                {selectedItem.engine_cc && (
-                  <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
-                    <div className="text-xs text-gray-600 mb-1">Motor</div>
-                    <div className="text-lg font-bold text-orange-600">{selectedItem.engine_cc} cc</div>
-                  </div>
-                )}
-
-                {selectedItem.weight && (
-                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                    <div className="text-xs text-gray-600 mb-1">Peso</div>
-                    <div className="text-lg font-bold text-gray-600">{selectedItem.weight} kg</div>
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-700 mb-3">Especificaciones Técnicas</h4>
-                  <div className="space-y-2 text-sm">
-                    {selectedItem.engine_type && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Tipo de Motor:</span>
-                        <span className="font-semibold text-gray-800">{selectedItem.engine_type}</span>
-                      </div>
-                    )}
-                    {selectedItem.max_power && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Potencia:</span>
-                        <span className="font-semibold text-gray-800">{selectedItem.max_power}</span>
-                      </div>
-                    )}
-                    {selectedItem.max_torque && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Torque:</span>
-                        <span className="font-semibold text-gray-800">{selectedItem.max_torque}</span>
-                      </div>
-                    )}
-                    {selectedItem.transmission && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Transmisión:</span>
-                        <span className="font-semibold text-gray-800">{selectedItem.transmission}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-700 mb-3">Dimensiones y Capacidades</h4>
-                  <div className="space-y-2 text-sm">
-                    {selectedItem.fuel_capacity && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Tanque:</span>
-                        <span className="font-semibold text-gray-800">{selectedItem.fuel_capacity} L</span>
-                      </div>
-                    )}
-                    {selectedItem.seat_height && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Altura Asiento:</span>
-                        <span className="font-semibold text-gray-800">{selectedItem.seat_height} mm</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">ABS:</span>
-                      <span className="font-semibold text-gray-800">{selectedItem.abs ? 'Sí' : 'No'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Control Tracción:</span>
-                      <span className="font-semibold text-gray-800">{selectedItem.traction_control ? 'Sí' : 'No'}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {selectedItem.color_options.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-700 mb-3">Colores Disponibles</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedItem.color_options.map((color, idx) => (
-                      <span key={idx} className="px-3 py-1 bg-gray-100 text-gray-800 rounded-full text-sm font-medium">
-                        {color}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {selectedItem.riding_modes.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-700 mb-3">Modos de Manejo</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedItem.riding_modes.map((mode, idx) => (
-                      <span key={idx} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-semibold">
-                        {mode}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {selectedItem.key_features.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-700 mb-3">Características Destacadas</h4>
-                  <ul className="space-y-2">
-                    {selectedItem.key_features.map((feature, idx) => (
-                      <li key={idx} className="flex items-start gap-2 text-sm text-gray-700">
-                        <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              <div className="flex items-center gap-4 pt-4 border-t border-gray-200">
-                <div className="flex items-center gap-2">
-                  {selectedItem.test_drive_available ? (
-                    <>
-                      <CheckCircle className="w-5 h-5 text-green-600" />
-                      <span className="text-sm font-semibold text-green-700">Prueba de Manejo Disponible</span>
-                    </>
-                  ) : (
-                    <>
-                      <XCircle className="w-5 h-5 text-gray-400" />
-                      <span className="text-sm text-gray-500">Sin prueba de manejo disponible</span>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {selectedItem.brochure_url && (
-                <div className="pt-4 border-t border-gray-200">
-                  <a
-                    href={selectedItem.brochure_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-all"
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Tipo de Campaña</label>
+                  <select
+                    value={newCampaign.campaign_type}
+                    onChange={(e) => setNewCampaign({ ...newCampaign, campaign_type: e.target.value })}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
                   >
-                    <FileText className="w-5 h-5" />
-                    Ver Ficha Técnica Completa
-                  </a>
+                    <option value="yamaha_special">Yamaha Especial</option>
+                    <option value="bank_promotion">Promoción Bancaria</option>
+                    <option value="seasonal">Temporada</option>
+                  </select>
                 </div>
-              )}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Proveedor</label>
+                  <input
+                    type="text"
+                    value={newCampaign.provider}
+                    onChange={(e) => setNewCampaign({ ...newCampaign, provider: e.target.value })}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Fecha Inicio</label>
+                  <input
+                    type="date"
+                    value={newCampaign.start_date}
+                    onChange={(e) => setNewCampaign({ ...newCampaign, start_date: e.target.value })}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Fecha Fin</label>
+                  <input
+                    type="date"
+                    value={newCampaign.end_date}
+                    onChange={(e) => setNewCampaign({ ...newCampaign, end_date: e.target.value })}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Modelos Aplicables (separados por coma)</label>
+                <input
+                  type="text"
+                  value={newCampaign.applicable_models}
+                  onChange={(e) => setNewCampaign({ ...newCampaign, applicable_models: e.target.value })}
+                  className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
+                  placeholder="MT-07, YZF-R3, Tenere 700"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Precio Mínimo (MXN)</label>
+                  <input
+                    type="number"
+                    value={newCampaign.min_price}
+                    onChange={(e) => setNewCampaign({ ...newCampaign, min_price: Number(e.target.value) })}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Prioridad</label>
+                  <input
+                    type="number"
+                    value={newCampaign.priority}
+                    onChange={(e) => setNewCampaign({ ...newCampaign, priority: Number(e.target.value) })}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
+                    placeholder="0-100 (mayor = más prioritario)"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Enganche (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={newCampaign.down_payment_percent}
+                    onChange={(e) => setNewCampaign({ ...newCampaign, down_payment_percent: Number(e.target.value) })}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Plazo (meses)</label>
+                  <input
+                    type="number"
+                    value={newCampaign.term_months}
+                    onChange={(e) => setNewCampaign({ ...newCampaign, term_months: Number(e.target.value) })}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Tasa Anual (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={newCampaign.interest_rate}
+                    onChange={(e) => setNewCampaign({ ...newCampaign, interest_rate: Number(e.target.value) })}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
+                    placeholder="0 para S/I"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Descripción de Beneficios</label>
+                <textarea
+                  value={newCampaign.benefits_description}
+                  onChange={(e) => setNewCampaign({ ...newCampaign, benefits_description: e.target.value })}
+                  className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none h-24"
+                  placeholder="Descripción completa de la promoción"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={newCampaign.active}
+                  onChange={(e) => setNewCampaign({ ...newCampaign, active: e.target.checked })}
+                  className="w-4 h-4"
+                />
+                <label className="text-sm font-medium text-gray-700">Campaña activa</label>
+              </div>
+              <div className="flex gap-3 pt-4 sticky bottom-0 bg-white">
+                <button
+                  onClick={handleCreateCampaign}
+                  className="flex-1 bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 rounded-lg font-semibold transition-all"
+                >
+                  Crear Campaña
+                </button>
+                <button
+                  onClick={() => setShowCampaignModal(false)}
+                  className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+              </div>
             </div>
           </div>
         </div>
