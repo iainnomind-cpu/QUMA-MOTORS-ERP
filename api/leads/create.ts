@@ -134,13 +134,14 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
     const initialScore = calculateInitialScore(data);
     const initialStatus = calculateInitialStatus(initialScore);
 
-    // Ajustar fecha de cumpleaños: mantener solo la fecha sin conversión horaria
+    // Ajustar fecha de cumpleaños: agregar zona horaria de México para evitar conversiones
     let birthdayFormatted = null;
     if (data.birthday) {
-      // Extraer solo la fecha (YYYY-MM-DD) sin la parte de hora
+      // Extraer solo la fecha (YYYY-MM-DD)
       const dateOnly = data.birthday.split('T')[0];
-      // Agregar hora de mediodía para evitar problemas de zona horaria
-      birthdayFormatted = dateOnly + 'T12:00:00.000Z';
+      // Agregar medianoche en zona horaria de México (GMT-6)
+      // Esto hará que cuando el frontend haga new Date(), se mantenga el día correcto
+      birthdayFormatted = dateOnly + 'T06:00:00.000Z'; // 00:00 México = 06:00 UTC
     }
 
     // Ajustar fecha de prueba de manejo: interpretar como hora de México (GMT-6)
