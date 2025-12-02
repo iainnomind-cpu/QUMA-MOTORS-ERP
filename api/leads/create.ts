@@ -70,10 +70,14 @@ function validateLeadData(data: CreateLeadRequest): { valid: boolean; error?: st
 function calculateInitialScore(data: CreateLeadRequest): number {
   let score = 45;
 
+  // Contacto (+20 puntos máximo)
   if (data.email && data.email.trim().length > 0) score += 10;
   if (data.phone && data.phone.trim().length > 0) score += 10;
+  
+  // Interés específico (+15 puntos)
   if (data.model_interested && data.model_interested.trim().length > 0) score += 15;
 
+  // Timeframe (+20 puntos máximo)
   if (data.timeframe) {
     switch (data.timeframe.toLowerCase()) {
       case 'inmediato': score += 20; break;
@@ -82,7 +86,27 @@ function calculateInitialScore(data: CreateLeadRequest): number {
     }
   }
 
-  if (data.requires_financing) score += 10;
+  // Financiamiento (hasta +20 puntos basado en tipo)
+  if (data.financing_type) {
+    const financingType = data.financing_type.toLowerCase();
+    
+    if (financingType.includes('contado')) {
+      score += 20; // CONTADO = Máxima prioridad
+    } else if (financingType.includes('yamaha especial')) {
+      score += 15; // Yamaha Especial = Alto valor
+    } else if (financingType.includes('tarjeta bancaria')) {
+      score += 12; // Tarjeta = Buen prospecto
+    } else if (financingType.includes('corto plazo') || financingType.includes('caja colón')) {
+      score += 10; // Otros financiamientos internos
+    } else {
+      score += 8; // Otros casos
+    }
+  } else if (data.requires_financing) {
+    // Si requiere financiamiento pero no especificó tipo
+    score += 10;
+  }
+
+  // Prueba de manejo (+5 puntos)
   if (data.test_drive_requested) score += 5;
 
   return Math.min(score, 100);
@@ -110,6 +134,26 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
     const initialScore = calculateInitialScore(data);
     const initialStatus = calculateInitialStatus(initialScore);
 
+    // Ajustar fecha de cumpleaños: mantener solo la fecha sin conversión horaria
+    let birthdayFormatted = null;
+    if (data.birthday) {
+      // Extraer solo la fecha (YYYY-MM-DD) sin la parte de hora
+      birthdayFormatted = data.birthday.split('T')[0];
+    }
+
+    // Ajustar fecha de prueba de manejo a zona horaria de México (GMT-6)
+    let testDriveDateFormatted = null;
+    if (data.test_drive_date) {
+      // Si viene en formato ISO con hora, convertir a zona horaria de México
+      const date = new Date(data.test_drive_date);
+      // Obtener offset de México (GMT-6 = -360 minutos)
+      const mexicoOffset = -360;
+      const localOffset = date.getTimezoneOffset();
+      const diffMinutes = mexicoOffset - localOffset;
+      date.setMinutes(date.getMinutes() + diffMinutes);
+      testDriveDateFormatted = date.toISOString();
+    }
+
     const leadData = {
       name: data.name.trim(),
       phone: data.phone?.trim() || null,
@@ -118,9 +162,9 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
       model_interested: data.model_interested?.trim() || null,
       timeframe: data.timeframe || null,
       financing_type: data.financing_type || null,
-      birthday: data.birthday || null,
+      birthday: birthdayFormatted,
       test_drive_requested: data.test_drive_requested || false,
-      test_drive_date: data.test_drive_date || null,
+      test_drive_date: testDriveDateFormatted,
       test_drive_completed: false,
       requires_financing: data.requires_financing || false,
       down_payment_amount: data.down_payment_amount || null,
@@ -162,7 +206,7 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
       }]);
 
     // Si solicitó prueba de manejo
-    if (data.test_drive_requested && data.test_drive_date && data.model_interested) {
+    if (data.test_drive_requested && testDriveDateFormatted && data.model_interested) {
       const { data: catalogItem } = await supabase
         .from('catalog')
         .select('id')
@@ -178,7 +222,7 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
           lead_phone: data.phone || null,
           catalog_item_id: catalogItem?.id || null,
           catalog_model: data.model_interested,
-          appointment_date: data.test_drive_date,
+          appointment_date: testDriveDateFormatted,
           duration_minutes: 30,
           status: 'scheduled',
           pickup_location: 'agencia',
