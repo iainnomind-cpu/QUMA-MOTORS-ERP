@@ -138,20 +138,21 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
     let birthdayFormatted = null;
     if (data.birthday) {
       // Extraer solo la fecha (YYYY-MM-DD) sin la parte de hora
-      birthdayFormatted = data.birthday.split('T')[0];
+      const dateOnly = data.birthday.split('T')[0];
+      // Agregar hora de mediodía para evitar problemas de zona horaria
+      birthdayFormatted = dateOnly + 'T12:00:00.000Z';
     }
 
-    // Ajustar fecha de prueba de manejo a zona horaria de México (GMT-6)
+    // Ajustar fecha de prueba de manejo: interpretar como hora de México (GMT-6)
     let testDriveDateFormatted = null;
     if (data.test_drive_date) {
-      // Si viene en formato ISO con hora, convertir a zona horaria de México
-      const date = new Date(data.test_drive_date);
-      // Obtener offset de México (GMT-6 = -360 minutos)
-      const mexicoOffset = -360;
-      const localOffset = date.getTimezoneOffset();
-      const diffMinutes = mexicoOffset - localOffset;
-      date.setMinutes(date.getMinutes() + diffMinutes);
-      testDriveDateFormatted = date.toISOString();
+      // Asumimos que la hora proporcionada es hora local de México
+      // Agregamos 6 horas para convertir a UTC (México es GMT-6)
+      const localDate = data.test_drive_date.includes('Z') || data.test_drive_date.includes('+') 
+        ? new Date(data.test_drive_date)
+        : new Date(data.test_drive_date + '-06:00'); // Agregar zona horaria de México
+      
+      testDriveDateFormatted = localDate.toISOString();
     }
 
     const leadData = {
