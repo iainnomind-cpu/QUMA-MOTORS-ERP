@@ -39,7 +39,7 @@ export function FinanceSimulator() {
     provider: 'Yamaha Motor Finance',
     start_date: '',
     end_date: '',
-    applicable_models: '',
+    applicable_models: [] as string[],
     min_price: 0,
     down_payment_percent: 50,
     term_months: 12,
@@ -321,13 +321,10 @@ export function FinanceSimulator() {
   };
 
   const handleCreateCampaign = async () => {
-    const modelsArray = newCampaign.applicable_models.split(',').map(m => m.trim()).filter(m => m);
-
     const { error } = await supabase
       .from('financing_campaigns')
       .insert([{
         ...newCampaign,
-        applicable_models: modelsArray,
         interest_rate: newCampaign.interest_rate / 100,
         special_conditions: {
           show_promotion_banner: true,
@@ -347,7 +344,7 @@ export function FinanceSimulator() {
         provider: 'Yamaha Motor Finance',
         start_date: '',
         end_date: '',
-        applicable_models: '',
+        applicable_models: [],
         min_price: 0,
         down_payment_percent: 50,
         term_months: 12,
@@ -838,7 +835,7 @@ export function FinanceSimulator() {
                       provider: 'Yamaha Motor Finance',
                       start_date: '',
                       end_date: '',
-                      applicable_models: '',
+                      applicable_models: [],
                       min_price: 0,
                       down_payment_percent: 50,
                       term_months: 12,
@@ -1119,14 +1116,86 @@ export function FinanceSimulator() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Modelos Aplicables (separados por coma)</label>
-                <input
-                  type="text"
-                  value={newCampaign.applicable_models}
-                  onChange={(e) => setNewCampaign({ ...newCampaign, applicable_models: e.target.value })}
-                  className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
-                  placeholder="MT-07, YZF-R3, Tenere 700"
-                />
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Modelos Aplicables</label>
+
+                {newCampaign.applicable_models.length > 0 && (
+                  <div className="mb-3">
+                    <div className="text-xs font-semibold text-gray-600 mb-2">MODELOS SELECCIONADOS:</div>
+                    <div className="flex flex-wrap gap-2">
+                      {newCampaign.applicable_models.map((model, idx) => (
+                        <div key={idx} className="flex items-center gap-2 bg-orange-100 text-orange-800 px-3 py-1 rounded-lg border border-orange-300">
+                          <span className="text-sm font-medium">{model}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewCampaign({
+                                ...newCampaign,
+                                applicable_models: newCampaign.applicable_models.filter((_, i) => i !== idx)
+                              });
+                            }}
+                            className="hover:bg-orange-200 rounded-full p-0.5 transition-colors"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="border-2 border-gray-300 rounded-lg p-3 max-h-64 overflow-y-auto">
+                  <div className="text-xs font-semibold text-gray-600 mb-2">CATÁLOGO DISPONIBLE:</div>
+                  {catalog.length === 0 ? (
+                    <div className="text-center py-4 text-sm text-gray-500">
+                      No hay modelos en el catálogo
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-2">
+                      {catalog.map((item) => {
+                        const isSelected = newCampaign.applicable_models.includes(item.model);
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                              if (!isSelected) {
+                                setNewCampaign({
+                                  ...newCampaign,
+                                  applicable_models: [...newCampaign.applicable_models, item.model]
+                                });
+                              }
+                            }}
+                            disabled={isSelected}
+                            className={`text-left px-3 py-2 rounded-lg transition-all ${
+                              isSelected
+                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                : 'bg-white hover:bg-orange-50 border-2 border-gray-200 hover:border-orange-300'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <div className="text-sm font-semibold">{item.model}</div>
+                                <div className="text-xs text-gray-500">{item.segment}</div>
+                              </div>
+                              <div className="text-xs font-medium text-gray-600">
+                                ${item.price_cash.toLocaleString('es-MX')}
+                              </div>
+                              {!isSelected && (
+                                <Plus className="w-4 h-4 ml-2 text-orange-600" />
+                              )}
+                              {isSelected && (
+                                <CheckCircle className="w-4 h-4 ml-2 text-green-600" />
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  Haz click en los modelos del catálogo para agregarlos a la campaña
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
