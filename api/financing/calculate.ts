@@ -503,7 +503,11 @@ export default async function handler(
     const result = await calculateFinancing(calculationData);
 
     if (result.success) {
-      return res.status(200).json(result);
+      // Retornar en formato plano para ManyChat (sin nested data)
+      return res.status(200).json({
+        success: true,
+        ...result.data // Spread los datos al primer nivel
+      });
     } else {
       return res.status(400).json(result);
     }
