@@ -176,8 +176,15 @@ async function scheduleService(
       };
     }
 
+    // Ajustar fecha: si no tiene zona horaria, interpretar como hora de México (GMT-6)
+    let appointmentDateISO = request.appointment_date;
+    if (!request.appointment_date.includes('Z') && !request.appointment_date.includes('+') && !request.appointment_date.includes('-', 10)) {
+      // No tiene zona horaria, agregar -06:00 (México)
+      appointmentDateISO = request.appointment_date + '-06:00';
+    }
+
     // Validar fecha (no puede ser en el pasado)
-    const appointmentDate = new Date(request.appointment_date);
+    const appointmentDate = new Date(appointmentDateISO);
     const now = new Date();
     if (appointmentDate < now) {
       return {
@@ -225,7 +232,7 @@ async function scheduleService(
       client_phone: client.phone,
       technician_id: technician.id,
       technician_name: technician.name,
-      appointment_date: request.appointment_date,
+      appointment_date: appointmentDateISO, // Usar la fecha ajustada
       service_type: request.service_type,
       estimated_duration_minutes: request.estimated_duration_minutes || 120,
       vehicle_model: request.vehicle_model?.trim() || null,
@@ -272,8 +279,8 @@ async function scheduleService(
       success: true,
       appointment_id: appointment.id,
       client_name: client.name,
-      appointment_date: request.appointment_date,
-      appointment_date_formatted: formatDate(request.appointment_date),
+      appointment_date: appointmentDateISO,
+      appointment_date_formatted: formatDate(appointmentDateISO),
       service_type: request.service_type,
       service_type_formatted: formatServiceType(request.service_type),
       technician_name: technician.name,
