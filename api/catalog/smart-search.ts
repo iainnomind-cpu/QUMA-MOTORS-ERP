@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 
-// Crear cliente de Supabase
 const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
@@ -12,57 +11,42 @@ interface ScoredModel {
   reasons: string[];
 }
 
-/**
- * Formatear precio en formato mexicano
- */
 function formatPrice(price: number): string {
   return `$${price.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN`;
 }
 
-/**
- * Extraer tokens (palabras clave) de un texto
- */
 function extractTokens(text: string): string[] {
   return text
     .toUpperCase()
-    .replace(/[^A-Z0-9\s]/g, ' ') // Reemplazar caracteres especiales por espacios
-    .split(/\s+/) // Dividir por espacios
-    .filter(token => token.length > 0); // Remover vacíos
+    .replace(/[^A-Z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(token => token.length > 0);
 }
 
-/**
- * Extraer año de un texto si existe
- */
 function extractYear(text: string): number | null {
-  const yearMatch = text.match(/\b(20\d{2})\b/); // Años entre 2000-2099
+  const yearMatch = text.match(/\b(20\d{2})\b/);
   return yearMatch ? parseInt(yearMatch[1]) : null;
 }
 
-/**
- * Calcular similitud entre dos conjuntos de tokens
- */
 function calculateTokenSimilarity(searchTokens: string[], modelTokens: string[]): number {
   let matchCount = 0;
   let score = 0;
 
   for (const searchToken of searchTokens) {
-    // Buscar match exacto
     if (modelTokens.includes(searchToken)) {
       matchCount++;
-      score += 15; // 15 puntos por cada palabra completa que coincida
+      score += 15;
     } else {
-      // Buscar match parcial (el token del modelo contiene el token de búsqueda)
       const partialMatch = modelTokens.some(modelToken => 
         modelToken.includes(searchToken) || searchToken.includes(modelToken)
       );
       if (partialMatch) {
         matchCount++;
-        score += 8; // 8 puntos por match parcial
+        score += 8;
       }
     }
   }
 
-  // Bonus si coinciden todas las palabras de búsqueda
   if (matchCount === searchTokens.length && searchTokens.length > 0) {
     score += 10;
   }
@@ -70,9 +54,6 @@ function calculateTokenSimilarity(searchTokens: string[], modelTokens: string[])
   return score;
 }
 
-/**
- * Calcular score de un modelo basado en criterios de búsqueda
- */
 function scoreModel(model: any, searchQuery: string): ScoredModel {
   let score = 0;
   const reasons: string[] = [];
@@ -81,7 +62,6 @@ function scoreModel(model: any, searchQuery: string): ScoredModel {
   const modelTokens = extractTokens(model.model);
   const searchYear = extractYear(searchQuery);
 
-  // 1. SIMILITUD DE TOKENS (0-50 puntos)
   const tokenScore = calculateTokenSimilarity(searchTokens, modelTokens);
   score += tokenScore;
   if (tokenScore > 30) {
@@ -92,7 +72,6 @@ function scoreModel(model: any, searchQuery: string): ScoredModel {
     reasons.push(`Match débil de palabras clave (${tokenScore} pts)`);
   }
 
-  // 2. STOCK DISPONIBLE (0-30 puntos)
   if (model.stock > 0) {
     if (model.stock > 3) {
       score += 30;
@@ -105,13 +84,11 @@ function scoreModel(model: any, searchQuery: string): ScoredModel {
     reasons.push('Sin stock (-0 pts)');
   }
 
-  // 3. AÑO DEL MODELO (0-20 puntos base + hasta 50 bonus)
   if (model.year) {
     const currentYear = new Date().getFullYear();
     const yearDiff = currentYear - model.year;
 
     if (searchYear) {
-      // Si el usuario especificó año, priorizar match exacto
       if (model.year === searchYear) {
         score += 50;
         reasons.push(`Año exacto solicitado: ${model.year} (+50 pts BONUS)`);
@@ -123,7 +100,6 @@ function scoreModel(model: any, searchQuery: string): ScoredModel {
         }
       }
     } else {
-      // Si no especificó año, priorizar más reciente
       if (yearDiff === 0) {
         score += 20;
         reasons.push(`Modelo del año actual: ${model.year} (+20 pts)`);
@@ -140,13 +116,11 @@ function scoreModel(model: any, searchQuery: string): ScoredModel {
     }
   }
 
-  // 4. PRUEBA DE MANEJO DISPONIBLE (0-5 puntos)
   if (model.test_drive_available) {
     score += 5;
     reasons.push('Prueba de manejo disponible (+5 pts)');
   }
 
-  // 5. MODELO ACTIVO (requisito, no suma puntos pero es filtro)
   if (!model.active) {
     score = 0;
     reasons.push('Modelo inactivo (descartado)');
@@ -159,18 +133,12 @@ function scoreModel(model: any, searchQuery: string): ScoredModel {
   };
 }
 
-/**
- * Determinar nivel de confianza del match
- */
 function getMatchConfidence(score: number): string {
   if (score >= 80) return 'high';
   if (score >= 50) return 'medium';
   return 'low';
 }
 
-/**
- * Búsqueda inteligente de modelo (devuelve solo el mejor match)
- */
 async function smartSearch(searchQuery: string) {
   try {
     if (!searchQuery || searchQuery.trim().length === 0) {
@@ -181,7 +149,6 @@ async function smartSearch(searchQuery: string) {
       };
     }
 
-    // Obtener todos los modelos activos
     const { data: models, error } = await supabase
       .from('catalog')
       .select('*')
@@ -203,18 +170,14 @@ async function smartSearch(searchQuery: string) {
       };
     }
 
-    // Calcular score para cada modelo
     const scoredModels: ScoredModel[] = models.map(model => 
       scoreModel(model, searchQuery)
     );
 
-    // Ordenar por score (mayor a menor)
     scoredModels.sort((a, b) => b.score - a.score);
 
-    // Tomar el mejor modelo
     const bestMatch = scoredModels[0];
 
-    // Si el score es muy bajo, considerar que no hay match
     if (bestMatch.score < 15) {
       return {
         success: false,
@@ -224,12 +187,10 @@ async function smartSearch(searchQuery: string) {
       };
     }
 
-    // Contar cuántos modelos alternativos hay (con score > 30)
     const alternativeModelsCount = scoredModels.filter(
       (sm, index) => index > 0 && sm.score > 30
     ).length;
 
-    // Preparar respuesta en formato plano para ManyChat
     const model = bestMatch.model;
     
     return {
@@ -276,12 +237,10 @@ async function smartSearch(searchQuery: string) {
   }
 }
 
-// Handler principal
 export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
-  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-Key');
@@ -299,7 +258,6 @@ export default async function handler(
   }
 
   try {
-    // Validar API Key (opcional)
     const apiKey = req.headers['x-api-key'];
     const validApiKey = process.env.API_KEY;
 
