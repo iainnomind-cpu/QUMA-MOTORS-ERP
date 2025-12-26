@@ -28,30 +28,124 @@ function extractYear(text: string): number | null {
   return yearMatch ? parseInt(yearMatch[1]) : null;
 }
 
+function extractSegmentFromQuery(text: string): string | null {
+  const segments = [
+    'SCOOTER',
+    'DEPORTIVA',
+    'NAKED',
+    'TOURING',
+    'ADVENTURE',
+    'DOBLE PROPOSITO',
+    'DUAL SPORT',
+    'CRUISER',
+    'TRAIL',
+    'ENDURO',
+    'RETRO',
+    'CAFE RACER',
+    'SPORT',
+    'URBAN'
+  ];
+
+  const upperText = text.toUpperCase();
+  
+  for (const segment of segments) {
+    if (upperText.includes(segment)) {
+      return segment;
+    }
+  }
+  
+  return null;
+}
+
 function calculateTokenSimilarity(searchTokens: string[], modelTokens: string[]): number {
   let matchCount = 0;
   let score = 0;
+  const totalSearchTokens = searchTokens.length;
 
   for (const searchToken of searchTokens) {
+    // Match exacto: peso muy alto
     if (modelTokens.includes(searchToken)) {
       matchCount++;
-      score += 15;
+      score += 40; // Aumentado de 15 a 40
     } else {
+      // Match parcial: peso medio
       const partialMatch = modelTokens.some(modelToken => 
         modelToken.includes(searchToken) || searchToken.includes(modelToken)
       );
       if (partialMatch) {
         matchCount++;
-        score += 8;
+        score += 20; // Aumentado de 8 a 20
       }
     }
   }
 
-  if (matchCount === searchTokens.length && searchTokens.length > 0) {
-    score += 10;
+  // Bonus por porcentaje de coincidencia
+  const matchPercentage = totalSearchTokens > 0 ? matchCount / totalSearchTokens : 0;
+  
+  if (matchPercentage === 1.0 && totalSearchTokens > 0) {
+    score += 50; // Aumentado de 10 a 50 - Match perfecto de todas las palabras
+  } else if (matchPercentage >= 0.75) {
+    score += 30; // Match del 75% o más
+  } else if (matchPercentage >= 0.5) {
+    score += 15; // Match del 50% o más
   }
 
   return score;
+}
+
+function calculateSegmentMatch(modelSegment: string, searchQuery: string): { score: number; reason: string | null } {
+  if (!modelSegment) {
+    return { score: 0, reason: null };
+  }
+
+  const searchSegment = extractSegmentFromQuery(searchQuery);
+  const modelSegmentUpper = modelSegment.toUpperCase();
+  const searchQueryUpper = searchQuery.toUpperCase();
+
+  // Si se detectó un segmento específico en la búsqueda
+  if (searchSegment) {
+    // Match exacto de segmento
+    if (modelSegmentUpper.includes(searchSegment) || searchSegment.includes(modelSegmentUpper)) {
+      return { 
+        score: 100, 
+        reason: `Segmento exacto: ${modelSegment} (+100 pts CRÍTICO)` 
+      };
+    }
+    
+    // Segmentos similares
+    const similarSegments: { [key: string]: string[] } = {
+      'DEPORTIVA': ['SPORT', 'SUPERSPORT'],
+      'DOBLE PROPOSITO': ['DUAL SPORT', 'ADVENTURE', 'TRAIL', 'ENDURO'],
+      'ADVENTURE': ['DOBLE PROPOSITO', 'DUAL SPORT', 'TRAIL', 'TOURING'],
+      'NAKED': ['SPORT', 'URBAN', 'RETRO'],
+      'CRUISER': ['TOURING', 'RETRO'],
+      'SCOOTER': ['URBAN']
+    };
+
+    for (const [mainSegment, relatedSegments] of Object.entries(similarSegments)) {
+      if (searchSegment.includes(mainSegment) || mainSegment.includes(searchSegment)) {
+        if (relatedSegments.some(rel => modelSegmentUpper.includes(rel))) {
+          return { 
+            score: 40, 
+            reason: `Segmento relacionado: ${modelSegment} (+40 pts)` 
+          };
+        }
+      }
+    }
+    
+    // Penalización severa por segmento incompatible
+    return { 
+      score: -80, 
+      reason: `Segmento incompatible: ${modelSegment} vs búsqueda ${searchSegment} (-80 pts PENALIZACIÓN)` 
+    };
+  }
+
+  // Si no se especificó segmento pero el modelo tiene uno
+  // Solo mencionar el segmento sin dar puntos extra
+  return { 
+    score: 0, 
+    reason: `Segmento del modelo: ${modelSegment}` 
+  };
 }
 
 function scoreModel(model: any, searchQuery: string): ScoredModel {
@@ -62,28 +156,27 @@ function scoreModel(model: any, searchQuery: string): ScoredModel {
   const modelTokens = extractTokens(model.model);
   const searchYear = extractYear(searchQuery);
 
+  // 1. NOMBRE DEL MODELO - MÁXIMA PRIORIDAD (hasta 130 puntos)
   const tokenScore = calculateTokenSimilarity(searchTokens, modelTokens);
   score += tokenScore;
-  if (tokenScore > 30) {
-    reasons.push(`Match fuerte de palabras clave (${tokenScore} pts)`);
-  } else if (tokenScore > 15) {
-    reasons.push(`Match medio de palabras clave (${tokenScore} pts)`);
+  if (tokenScore > 80) {
+    reasons.push(`✓ Match excelente de nombre (${tokenScore} pts)`);
+  } else if (tokenScore > 50) {
+    reasons.push(`✓ Match fuerte de nombre (${tokenScore} pts)`);
+  } else if (tokenScore > 30) {
+    reasons.push(`Match medio de nombre (${tokenScore} pts)`);
   } else if (tokenScore > 0) {
-    reasons.push(`Match débil de palabras clave (${tokenScore} pts)`);
+    reasons.push(`Match débil de nombre (${tokenScore} pts)`);
   }
 
-  if (model.stock > 0) {
-    if (model.stock > 3) {
-      score += 30;
-      reasons.push(`Stock disponible: ${model.stock} unidades (+30 pts)`);
-    } else {
-      score += 20;
-      reasons.push(`Stock limitado: ${model.stock} unidades (+20 pts)`);
-    }
-  } else {
-    reasons.push('Sin stock (-0 pts)');
+  // 2. SEGMENTO - ALTA PRIORIDAD (hasta 100 puntos o -80 penalización)
+  const segmentMatch = calculateSegmentMatch(model.segment, searchQuery);
+  score += segmentMatch.score;
+  if (segmentMatch.reason) {
+    reasons.push(segmentMatch.reason);
   }
 
+  // 3. AÑO - PRIORIDAD MEDIA (hasta 50 puntos)
   if (model.year) {
     const currentYear = new Date().getFullYear();
     const yearDiff = currentYear - model.year;
@@ -91,39 +184,56 @@ function scoreModel(model: any, searchQuery: string): ScoredModel {
     if (searchYear) {
       if (model.year === searchYear) {
         score += 50;
-        reasons.push(`Año exacto solicitado: ${model.year} (+50 pts BONUS)`);
+        reasons.push(`✓ Año exacto: ${model.year} (+50 pts)`);
       } else {
         const yearDistance = Math.abs(model.year - searchYear);
         if (yearDistance === 1) {
-          score += 10;
-          reasons.push(`Año cercano al solicitado: ${model.year} (+10 pts)`);
+          score += 15;
+          reasons.push(`Año cercano: ${model.year} (+15 pts)`);
+        } else if (yearDistance === 2) {
+          score += 5;
+          reasons.push(`Año próximo: ${model.year} (+5 pts)`);
         }
       }
     } else {
+      // Sin año específico en búsqueda, premiar modelos recientes
       if (yearDiff === 0) {
-        score += 20;
-        reasons.push(`Modelo del año actual: ${model.year} (+20 pts)`);
-      } else if (yearDiff === 1) {
         score += 15;
-        reasons.push(`Modelo del año pasado: ${model.year} (+15 pts)`);
-      } else if (yearDiff === 2) {
+        reasons.push(`Modelo ${model.year} actual (+15 pts)`);
+      } else if (yearDiff === 1) {
         score += 10;
-        reasons.push(`Modelo de hace 2 años: ${model.year} (+10 pts)`);
-      } else if (yearDiff > 2) {
+        reasons.push(`Modelo ${model.year} reciente (+10 pts)`);
+      } else if (yearDiff === 2) {
         score += 5;
-        reasons.push(`Modelo antiguo: ${model.year} (+5 pts)`);
+        reasons.push(`Modelo ${model.year} (+5 pts)`);
       }
     }
   }
 
+  // 4. STOCK - PRIORIDAD BAJA, SOLO DESEMPATE (hasta 15 puntos)
+  if (model.stock > 0) {
+    if (model.stock > 3) {
+      score += 15;
+      reasons.push(`Stock disponible: ${model.stock} unidades (+15 pts)`);
+    } else {
+      score += 10;
+      reasons.push(`Stock limitado: ${model.stock} unidades (+10 pts)`);
+    }
+  } else {
+    score += 0; // Sin penalización por falta de stock
+    reasons.push(`⚠ Sin stock disponible (0 pts)`);
+  }
+
+  // 5. EXTRAS - PRIORIDAD MUY BAJA (hasta 5 puntos)
   if (model.test_drive_available) {
     score += 5;
     reasons.push('Prueba de manejo disponible (+5 pts)');
   }
 
+  // 6. VALIDACIÓN FINAL
   if (!model.active) {
-    score = 0;
-    reasons.push('Modelo inactivo (descartado)');
+    score = -999;
+    reasons.push('❌ Modelo inactivo (descartado)');
   }
 
   return {
@@ -134,9 +244,10 @@ function scoreModel(model: any, searchQuery: string): ScoredModel {
 }
 
 function getMatchConfidence(score: number): string {
-  if (score >= 80) return 'high';
-  if (score >= 50) return 'medium';
-  return 'low';
+  if (score >= 100) return 'high';
+  if (score >= 60) return 'medium';
+  if (score >= 30) return 'low';
+  return 'very_low';
 }
 
 async function smartSearch(searchQuery: string) {
@@ -176,19 +287,33 @@ async function smartSearch(searchQuery: string) {
 
     scoredModels.sort((a, b) => b.score - a.score);
 
+    // Debug: mostrar top 3 resultados en logs
+    console.log('=== TOP 3 RESULTADOS ===');
+    scoredModels.slice(0, 3).forEach((sm, idx) => {
+      console.log(`${idx + 1}. ${sm.model.model} - Score: ${sm.score}`);
+      console.log(`   Razones: ${sm.reasons.join(' | ')}`);
+    });
+
     const bestMatch = scoredModels[0];
 
-    if (bestMatch.score < 15) {
+    // Umbral mínimo aumentado para mejor calidad
+    if (bestMatch.score < 30) {
       return {
         success: false,
         error: 'No se encontró coincidencia',
         message: `No se encontró un modelo que coincida con "${searchQuery}". Intenta con otro término de búsqueda.`,
-        suggestion: 'Verifica el nombre del modelo o busca por categoría (Scooter, Deportiva, etc.)'
+        suggestion: 'Verifica el nombre del modelo o busca por categoría (Scooter, Deportiva, Doble Propósito, etc.)',
+        debug_top_results: scoredModels.slice(0, 3).map(sm => ({
+          model: sm.model.model,
+          segment: sm.model.segment,
+          score: sm.score,
+          reasons: sm.reasons
+        }))
       };
     }
 
     const alternativeModelsCount = scoredModels.filter(
-      (sm, index) => index > 0 && sm.score > 30
+      (sm, index) => index > 0 && sm.score > 50
     ).length;
 
     const model = bestMatch.model;
