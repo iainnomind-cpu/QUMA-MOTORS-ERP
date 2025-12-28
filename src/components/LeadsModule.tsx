@@ -35,6 +35,7 @@ export function LeadsModule() {
   const [showInteractionModal, setShowInteractionModal] = useState(false);
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showDeleteClientModal, setShowDeleteClientModal] = useState(false);
   const [showFileViewer, setShowFileViewer] = useState(false);
   const [selectedFile, setSelectedFile] = useState<LeadAttachment | null>(null);
   const [showScoreModal, setShowScoreModal] = useState(false);
@@ -480,6 +481,22 @@ export function LeadsModule() {
       setViewMode('leads');
       setSelectedLead(null);
       loadLeads();
+    }
+  };
+
+  const handleDeleteClient = async () => {
+    if (!selectedClient) return;
+
+    const { error } = await supabase
+      .from('clients')
+      .delete()
+      .eq('id', selectedClient.id);
+
+    if (!error) {
+      setShowDeleteClientModal(false);
+      setViewMode('clients');
+      setSelectedClient(null);
+      loadClients();
     }
   };
 
@@ -1009,6 +1026,13 @@ export function LeadsModule() {
               Editar
             </button>
             <button
+              onClick={() => setShowDeleteClientModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-all"
+            >
+              <Trash2 className="w-4 h-4" />
+              Eliminar
+            </button>
+            <button
               onClick={() => setViewMode('clients')}
               className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-semibold transition-all"
             >
@@ -1264,6 +1288,32 @@ export function LeadsModule() {
             <p className="text-sm">El historial de interacciones se mostrará aquí</p>
           </div>
         </div>
+
+        {showDeleteClientModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setShowDeleteClientModal(false)}>
+            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-xl font-bold text-red-600 mb-4">Eliminar Cliente</h3>
+              <p className="text-gray-700 mb-6">
+                ¿Estás seguro de que deseas eliminar este cliente? Esta acción no se puede deshacer.
+                Se eliminará toda la información del cliente incluyendo su historial.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleDeleteClient}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-semibold transition-all"
+                >
+                  Eliminar Cliente
+                </button>
+                <button
+                  onClick={() => setShowDeleteClientModal(false)}
+                  className="px-6 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-semibold transition-all"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
