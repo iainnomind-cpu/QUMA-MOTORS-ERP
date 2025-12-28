@@ -1,29 +1,73 @@
 import { useState, useEffect } from 'react';
-import { supabase, PartsAccessoriesInventory, PartsSale, PartsInventoryMovement } from '../lib/supabase';
-import {
-  Package, Plus, Edit2, Trash2, Search, AlertCircle, TrendingUp, DollarSign,
-  ShoppingCart, X, Eye, Filter, BarChart3, ArrowUpCircle, ArrowDownCircle, ShoppingBag, Wrench
-} from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { Package, Plus, X, CreditCard as Edit2, Trash2, Search, Filter, TrendingUp, DollarSign, AlertTriangle, ShoppingCart, BarChart3, Eye } from 'lucide-react';
 
-type ViewMode = 'inventory' | 'sales' | 'movements';
-type CategoryFilter = 'all' | 'refaccion' | 'accesorio';
+interface PartItem {
+  id: string;
+  sku: string;
+  name: string;
+  category: 'refaccion' | 'accesorio';
+  subcategory: string | null;
+  description: string | null;
+  compatible_models: string[];
+  brand: string | null;
+  price_retail: number;
+  cost_price: number;
+  stock_quantity: number;
+  min_stock_alert: number;
+  location: string | null;
+  supplier: string | null;
+  image_url: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+interface PartSale {
+  id: string;
+  sale_date: string;
+  customer_name: string;
+  customer_phone: string | null;
+  customer_type: 'walk-in' | 'cliente' | 'lead';
+  related_customer_id: string | null;
+  items: any[];
+  subtotal: number;
+  discount: number;
+  total: number;
+  payment_method: string | null;
+  notes: string | null;
+  sold_by: string | null;
+  created_at: string;
+}
+
+interface InventoryMovement {
+  id: string;
+  part_id: string;
+  movement_type: 'entrada' | 'salida' | 'ajuste' | 'venta';
+  quantity: number;
+  previous_stock: number;
+  new_stock: number;
+  reason: string | null;
+  reference_id: string | null;
+  performed_by: string | null;
+  created_at: string;
+}
 
 export function PartsInventoryModule() {
-  const [viewMode, setViewMode] = useState<ViewMode>('inventory');
-  const [parts, setParts] = useState<PartsAccessoriesInventory[]>([]);
-  const [sales, setSales] = useState<PartsSale[]>([]);
-  const [movements, setMovements] = useState<PartsInventoryMovement[]>([]);
+  const [parts, setParts] = useState<PartItem[]>([]);
+  const [sales, setSales] = useState<PartSale[]>([]);
+  const [movements, setMovements] = useState<InventoryMovement[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
-  const [showModal, setShowModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<'inventory' | 'sales' | 'movements'>('inventory');
+  const [showPartModal, setShowPartModal] = useState(false);
   const [showSaleModal, setShowSaleModal] = useState(false);
   const [showMovementModal, setShowMovementModal] = useState(false);
-  const [editingPart, setEditingPart] = useState<PartsAccessoriesInventory | null>(null);
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('');
+  const [editingPart, setEditingPart] = useState<PartItem | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'refaccion' | 'accesorio'>('all');
+  const [lowStockFilter, setLowStockFilter] = useState(false);
 
-  const [formData, setFormData] = useState({
+  const [partFormData, setPartFormData] = useState({
     sku: '',
     name: '',
     category: 'refaccion' as 'refaccion' | 'accesorio',
@@ -31,31 +75,38 @@ export function PartsInventoryModule() {
     description: '',
     compatible_models: '',
     brand: '',
-    price_retail: 0,
-    cost_price: 0,
-    stock_quantity: 0,
-    min_stock_alert: 5,
+    sale_price: '',
+    cost: '',
+    stock: '',
+    min_stock: '',
     location: '',
     supplier: '',
-    image_url: '',
     active: true
   });
 
-  const [saleData, setSaleData] = useState({
+  const [saleFormData, setSaleFormData] = useState({
     customer_name: '',
     customer_phone: '',
     customer_type: 'walk-in' as 'walk-in' | 'cliente' | 'lead',
-    payment_method: 'Efectivo',
-    discount: 0,
+    items: [] as any[],
+    payment_method: '',
     notes: '',
-    items: [] as Array<{ part_id: string; part_name: string; quantity: number; price: number }>
+    part_id: '',
+    quantity: '',
+    unit_price: ''
   });
 
-  const [movementData, setMovementData] = useState({
+  const [movementFormData, setMovementFormData] = useState({
     part_id: '',
-    movement_type: 'entrada' as 'entrada' | 'salida' | 'ajuste',
-    quantity: 0,
+    movement_type: 'entrada' as 'entrada' | 'salida' | 'ajuste' | 'venta',
+    quantity: '',
     reason: ''
+  });
+
+  const [newSaleItem, setNewSaleItem] = useState({
+    part_id: '',
+    quantity: '',
+    unit_price: ''
   });
 
   useEffect(() => {
@@ -63,63 +114,66 @@ export function PartsInventoryModule() {
   }, []);
 
   const loadAllData = async () => {
-    await Promise.all([
-      loadParts(),
-      loadSales(),
-      loadMovements()
-    ]);
+    setLoading(true);
+    await Promise.all([loadParts(), loadSales(), loadMovements()]);
     setLoading(false);
   };
 
   const loadParts = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('parts_accessories_inventory')
       .select('*')
       .order('name');
-    if (data) setParts(data);
+
+    if (!error && data) {
+      setParts(data);
+    }
   };
 
   const loadSales = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('parts_sales')
       .select('*')
-      .order('sale_date', { ascending: false })
-      .limit(50);
-    if (data) setSales(data);
+      .order('sale_date', { ascending: false });
+
+    if (!error && data) {
+      setSales(data);
+    }
   };
 
   const loadMovements = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('parts_inventory_movements')
       .select('*')
-      .order('created_at', { ascending: false })
-      .limit(100);
-    if (data) setMovements(data);
+      .order('created_at', { ascending: false });
+
+    if (!error && data) {
+      setMovements(data);
+    }
   };
 
-  const handleOpenModal = (part?: PartsAccessoriesInventory) => {
+  const handleOpenPartModal = (part?: PartItem) => {
     if (part) {
       setEditingPart(part);
-      setFormData({
+      setPartFormData({
         sku: part.sku,
         name: part.name,
         category: part.category,
         subcategory: part.subcategory || '',
         description: part.description || '',
-        compatible_models: part.compatible_models.join(', '),
+        compatible_models: part.compatible_models?.join(', ') || '',
         brand: part.brand || '',
-        price_retail: part.price_retail,
-        cost_price: part.cost_price,
-        stock_quantity: part.stock_quantity,
-        min_stock_alert: part.min_stock_alert,
+        sale_price: part.price_retail?.toString() || '',
+        cost: part.cost_price?.toString() || '',
+        stock: part.stock_quantity?.toString() || '',
+        min_stock: part.min_stock_alert?.toString() || '',
         location: part.location || '',
         supplier: part.supplier || '',
-        image_url: part.image_url || '',
         active: part.active
       });
     } else {
       setEditingPart(null);
-      setFormData({
+      setPartFormData({
         sku: '',
         name: '',
         category: 'refaccion',
@@ -127,554 +181,435 @@ export function PartsInventoryModule() {
         description: '',
         compatible_models: '',
         brand: '',
-        price_retail: 0,
-        cost_price: 0,
-        stock_quantity: 0,
-        min_stock_alert: 5,
+        sale_price: '',
+        cost: '',
+        stock: '',
+        min_stock: '',
         location: '',
         supplier: '',
-        image_url: '',
         active: true
       });
     }
-    setShowModal(true);
+    setShowPartModal(true);
   };
 
-  const handleSubmit = async () => {
-    const dataToSubmit = {
-      sku: formData.sku,
-      name: formData.name,
-      category: formData.category,
-      subcategory: formData.subcategory || null,
-      description: formData.description || null,
-      compatible_models: formData.compatible_models.split(',').map(m => m.trim()).filter(m => m),
-      brand: formData.brand || null,
-      price_retail: formData.price_retail,
-      cost_price: formData.cost_price,
-      stock_quantity: formData.stock_quantity,
-      min_stock_alert: formData.min_stock_alert,
-      location: formData.location || null,
-      supplier: formData.supplier || null,
-      image_url: formData.image_url || null,
-      active: formData.active,
-      updated_at: new Date().toISOString()
+  const handleSavePart = async () => {
+    const partData = {
+      ...partFormData,
+      compatible_models: partFormData.compatible_models.split(',').map(m => m.trim()).filter(m => m),
+      price_retail: parseFloat(partFormData.sale_price) || 0,
+      cost_price: parseFloat(partFormData.cost) || 0,
+      stock_quantity: parseInt(partFormData.stock) || 0,
+      min_stock_alert: parseInt(partFormData.min_stock) || 5
     };
 
     if (editingPart) {
       const { error } = await supabase
         .from('parts_accessories_inventory')
-        .update(dataToSubmit)
+        .update(partData)
         .eq('id', editingPart.id);
 
       if (!error) {
-        setSuccessMessage('Producto actualizado exitosamente');
-        setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        loadParts();
+        setShowPartModal(false);
       }
     } else {
       const { error } = await supabase
         .from('parts_accessories_inventory')
-        .insert([dataToSubmit]);
+        .insert([partData]);
 
       if (!error) {
-        setSuccessMessage('Producto registrado exitosamente');
-        setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        loadParts();
+        setShowPartModal(false);
       }
     }
-
-    setShowModal(false);
-    setEditingPart(null);
-    loadParts();
   };
 
   const handleDeletePart = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar este producto?')) return;
+    if (confirm('¿Estás seguro de eliminar este producto?')) {
+      const { error } = await supabase
+        .from('parts_accessories_inventory')
+        .delete()
+        .eq('id', id);
+
+      if (!error) {
+        loadParts();
+      }
+    }
+  };
+
+  const handleAddSaleItem = () => {
+    const part = parts.find(p => p.id === newSaleItem.part_id);
+    if (part && newSaleItem.quantity && newSaleItem.unit_price) {
+      const quantity = parseInt(newSaleItem.quantity);
+      const unitPrice = parseFloat(newSaleItem.unit_price);
+      const total = quantity * unitPrice;
+
+      const item = {
+        part_id: part.id,
+        part_name: part.name,
+        quantity,
+        unit_price: unitPrice,
+        total
+      };
+
+      setSaleFormData(prev => ({
+        ...prev,
+        items: [...prev.items, item]
+      }));
+
+      setNewSaleItem({
+        part_id: '',
+        quantity: '',
+        unit_price: ''
+      });
+    }
+  };
+
+  const handleRemoveSaleItem = (index: number) => {
+    setSaleFormData(prev => ({
+      ...prev,
+      items: prev.items.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleSaveSale = async () => {
+    const subtotal = saleFormData.items.reduce((sum, item) => sum + item.total, 0);
+    const total = subtotal; // Sin descuento por ahora
+
+    const saleData = {
+      ...saleFormData,
+      items: saleFormData.items,
+      subtotal,
+      total,
+      discount: 0
+    };
 
     const { error } = await supabase
-      .from('parts_accessories_inventory')
-      .update({ active: false })
-      .eq('id', id);
+      .from('parts_sales')
+      .insert([saleData]);
 
     if (!error) {
-      setSuccessMessage('Producto desactivado');
-      setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 3000);
-      loadParts();
-    }
-  };
+      // Actualizar stock de cada item vendido
+      for (const item of saleFormData.items) {
+        const part = parts.find(p => p.id === item.part_id);
+        if (part) {
+          await supabase
+            .from('parts_accessories_inventory')
+            .update({ stock_quantity: part.stock_quantity - item.quantity })
+            .eq('id', item.part_id);
 
-  const handleAddItemToSale = () => {
-    const part = parts.find(p => p.id === movementData.part_id);
-    if (!part) {
-      alert('Selecciona un producto');
-      return;
-    }
+          // Registrar movimiento de inventario
+          await supabase
+            .from('parts_inventory_movements')
+            .insert([{
+              part_id: item.part_id,
+              movement_type: 'venta',
+              quantity: -item.quantity,
+              previous_stock: part.stock_quantity,
+              new_stock: part.stock_quantity - item.quantity,
+              reason: `Venta a ${saleFormData.customer_name}`
+            }]);
+        }
+      }
 
-    if (movementData.quantity <= 0) {
-      alert('La cantidad debe ser mayor a 0');
-      return;
-    }
-
-    if (movementData.quantity > part.stock_quantity) {
-      alert('Stock insuficiente');
-      return;
-    }
-
-    const existingItem = saleData.items.find(item => item.part_id === part.id);
-    if (existingItem) {
-      setSaleData({
-        ...saleData,
-        items: saleData.items.map(item =>
-          item.part_id === part.id
-            ? { ...item, quantity: item.quantity + movementData.quantity }
-            : item
-        )
-      });
-    } else {
-      setSaleData({
-        ...saleData,
-        items: [...saleData.items, {
-          part_id: part.id,
-          part_name: part.name,
-          quantity: movementData.quantity,
-          price: part.price_retail
-        }]
+      loadAllData();
+      setShowSaleModal(false);
+      setSaleFormData({
+        customer_name: '',
+        customer_phone: '',
+        customer_type: 'walk-in',
+        items: [],
+        payment_method: '',
+        notes: '',
+        part_id: '',
+        quantity: '',
+        unit_price: ''
       });
     }
-
-    setMovementData({ ...movementData, part_id: '', quantity: 0 });
   };
 
-  const handleRemoveItemFromSale = (partId: string) => {
-    setSaleData({
-      ...saleData,
-      items: saleData.items.filter(item => item.part_id !== partId)
-    });
-  };
-
-  const calculateSaleTotal = () => {
-    const subtotal = saleData.items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-    const total = subtotal - saleData.discount;
-    return { subtotal, total };
-  };
-
-  const handleSubmitSale = async () => {
-    if (saleData.items.length === 0) {
-      alert('Agrega al menos un producto a la venta');
-      return;
-    }
-
-    if (!saleData.customer_name) {
-      alert('Ingresa el nombre del cliente');
-      return;
-    }
-
-    const { subtotal, total } = calculateSaleTotal();
-
-    const { data: saleRecord, error: saleError } = await supabase
-      .from('parts_sales')
-      .insert([{
-        customer_name: saleData.customer_name,
-        customer_phone: saleData.customer_phone || null,
-        customer_type: saleData.customer_type,
-        items: saleData.items,
-        subtotal,
-        discount: saleData.discount,
-        total,
-        payment_method: saleData.payment_method,
-        notes: saleData.notes || null
-      }])
-      .select()
-      .single();
-
-    if (saleError || !saleRecord) {
-      alert('Error al registrar la venta');
-      return;
-    }
-
-    for (const item of saleData.items) {
-      const part = parts.find(p => p.id === item.part_id);
-      if (!part) continue;
-
-      const newStock = part.stock_quantity - item.quantity;
-
-      await supabase
-        .from('parts_accessories_inventory')
-        .update({ stock_quantity: newStock, updated_at: new Date().toISOString() })
-        .eq('id', part.id);
-
-      await supabase
-        .from('parts_inventory_movements')
-        .insert([{
-          part_id: part.id,
-          movement_type: 'venta',
-          quantity: -item.quantity,
-          previous_stock: part.stock_quantity,
-          new_stock: newStock,
-          reason: `Venta a ${saleData.customer_name}`,
-          reference_id: saleRecord.id
-        }]);
-    }
-
-    setSuccessMessage('Venta registrada exitosamente');
-    setShowSuccess(true);
-    setTimeout(() => setShowSuccess(false), 3000);
-    setShowSaleModal(false);
-    setSaleData({
-      customer_name: '',
-      customer_phone: '',
-      customer_type: 'walk-in',
-      payment_method: 'Efectivo',
-      discount: 0,
-      notes: '',
-      items: []
-    });
-    loadAllData();
-  };
-
-  const handleSubmitMovement = async () => {
-    if (!movementData.part_id || movementData.quantity === 0) {
-      alert('Completa todos los campos');
-      return;
-    }
-
-    const part = parts.find(p => p.id === movementData.part_id);
+  const handleSaveMovement = async () => {
+    const part = parts.find(p => p.id === movementFormData.part_id);
     if (!part) return;
 
-    let quantityChange = movementData.quantity;
-    if (movementData.movement_type === 'salida') {
-      quantityChange = -Math.abs(quantityChange);
-    }
+    const quantity = parseInt(movementFormData.quantity);
+    const isPositive = movementFormData.movement_type === 'entrada' || movementFormData.movement_type === 'ajuste';
+    const finalQuantity = isPositive ? quantity : -quantity;
+    const newStock = part.stock_quantity + finalQuantity;
 
-    const newStock = part.stock_quantity + quantityChange;
+    const movementData = {
+      part_id: movementFormData.part_id,
+      movement_type: movementFormData.movement_type,
+      quantity: finalQuantity,
+      previous_stock: part.stock_quantity,
+      new_stock: Math.max(0, newStock),
+      reason: movementFormData.reason
+    };
 
-    if (newStock < 0) {
-      alert('Stock insuficiente');
-      return;
-    }
-
-    await supabase
-      .from('parts_accessories_inventory')
-      .update({ stock_quantity: newStock, updated_at: new Date().toISOString() })
-      .eq('id', part.id);
-
-    await supabase
+    const { error: movementError } = await supabase
       .from('parts_inventory_movements')
-      .insert([{
-        part_id: part.id,
-        movement_type: movementData.movement_type,
-        quantity: quantityChange,
-        previous_stock: part.stock_quantity,
-        new_stock: newStock,
-        reason: movementData.reason || null
-      }]);
+      .insert([movementData]);
 
-    setSuccessMessage('Movimiento registrado exitosamente');
-    setShowSuccess(true);
-    setTimeout(() => setShowSuccess(false), 3000);
-    setShowMovementModal(false);
-    setMovementData({ part_id: '', movement_type: 'entrada', quantity: 0, reason: '' });
-    loadAllData();
+    if (!movementError) {
+      await supabase
+        .from('parts_accessories_inventory')
+        .update({ stock_quantity: Math.max(0, newStock) })
+        .eq('id', movementFormData.part_id);
+
+      loadAllData();
+      setShowMovementModal(false);
+      setMovementFormData({
+        part_id: '',
+        movement_type: 'entrada',
+        quantity: '',
+        reason: ''
+      });
+    }
   };
 
   const filteredParts = parts.filter(part => {
+    const matchesSearch = part.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         part.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         part.brand?.toLowerCase().includes(searchTerm.toLowerCase());
+    
     const matchesCategory = categoryFilter === 'all' || part.category === categoryFilter;
-    const matchesSearch = searchTerm === '' ||
-      part.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      part.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (part.brand && part.brand.toLowerCase().includes(searchTerm.toLowerCase()));
-    return matchesCategory && matchesSearch && part.active;
+    const matchesLowStock = !lowStockFilter || part.stock_quantity <= part.min_stock_alert;
+
+    return matchesSearch && matchesCategory && matchesLowStock;
   });
 
-  const lowStockParts = parts.filter(p => p.active && p.stock_quantity <= p.min_stock_alert);
-
-  const stats = {
-    totalProducts: parts.filter(p => p.active).length,
-    totalRefacciones: parts.filter(p => p.active && p.category === 'refaccion').length,
-    totalAccesorios: parts.filter(p => p.active && p.category === 'accesorio').length,
-    lowStock: lowStockParts.length,
-    totalValue: parts.filter(p => p.active).reduce((acc, p) => acc + (p.price_retail * p.stock_quantity), 0),
-    totalSales: sales.length,
-    totalSalesValue: sales.reduce((acc, s) => acc + s.total, 0)
-  };
-
-  const getCategoryColor = (category: string) => {
-    return category === 'refaccion'
-      ? 'bg-blue-100 text-blue-800 border-blue-300'
-      : 'bg-green-100 text-green-800 border-green-300';
-  };
+  const totalInventoryValue = parts.reduce((sum, part) => sum + (part.stock_quantity * part.cost_price), 0);
+  const lowStockItems = parts.filter(part => part.stock_quantity <= part.min_stock_alert).length;
+  const totalSalesValue = sales.reduce((sum, sale) => sum + sale.total, 0);
 
   if (loading) {
-    return <div className="text-center py-8">Cargando inventario...</div>;
+    return (
+      <div className="text-center py-12">
+        <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
+        <p className="mt-4 text-gray-600">Cargando inventario...</p>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <Wrench className="w-7 h-7 text-blue-600" />
-            Control de Inventario - Refacciones y Accesorios
-          </h3>
-          <p className="text-sm text-gray-600 mt-1">Gestión completa para ventas directas y walk-in</p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => handleOpenModal()}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold transition-all"
-          >
-            <Plus className="w-5 h-5" />
-            Nuevo Producto
-          </button>
-          <button
-            onClick={() => setShowSaleModal(true)}
-            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold transition-all"
-          >
-            <ShoppingCart className="w-5 h-5" />
-            Registrar Venta
-          </button>
-          <button
-            onClick={() => setShowMovementModal(true)}
-            className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-semibold transition-all"
-          >
-            <ArrowUpCircle className="w-5 h-5" />
-            Movimiento
-          </button>
+          <h2 className="text-3xl font-bold text-gray-800 flex items-center gap-2">
+            <Package className="w-8 h-8 text-orange-600" />
+            Control de Inventario
+          </h2>
+          <p className="text-gray-600 mt-1">Gestión de refacciones y accesorios</p>
         </div>
       </div>
 
-      {showSuccess && (
-        <div className="bg-green-100 border-2 border-green-400 text-green-800 px-4 py-3 rounded-lg flex items-center gap-3">
-          <TrendingUp className="w-5 h-5" />
-          <span className="font-semibold">{successMessage}</span>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white">
+      {/* Métricas principales */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white">
           <div className="flex items-center justify-between mb-2">
             <Package className="w-8 h-8 opacity-80" />
             <div className="text-right">
-              <div className="text-3xl font-bold">{stats.totalProducts}</div>
+              <div className="text-3xl font-bold">{parts.length}</div>
               <div className="text-xs opacity-90 mt-1">productos</div>
             </div>
           </div>
-          <div className="text-sm font-semibold mt-2">Total Activos</div>
+          <div className="text-sm font-semibold mt-2">Total Productos</div>
         </div>
 
-        <div className="bg-gradient-to-br from-cyan-500 to-cyan-600 rounded-lg shadow-lg p-6 text-white">
+        <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-lg p-6 text-white">
           <div className="flex items-center justify-between mb-2">
-            <Wrench className="w-8 h-8 opacity-80" />
+            <DollarSign className="w-8 h-8 opacity-80" />
             <div className="text-right">
-              <div className="text-3xl font-bold">{stats.totalRefacciones}</div>
-              <div className="text-xs opacity-90 mt-1">refacciones</div>
+              <div className="text-2xl font-bold">${totalInventoryValue.toLocaleString('es-MX')}</div>
+              <div className="text-xs opacity-90 mt-1">MXN</div>
             </div>
           </div>
-          <div className="text-sm font-semibold mt-2">Refacciones</div>
+          <div className="text-sm font-semibold mt-2">Valor Inventario</div>
         </div>
 
-        <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white">
+        <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-xl shadow-lg p-6 text-white">
           <div className="flex items-center justify-between mb-2">
-            <ShoppingBag className="w-8 h-8 opacity-80" />
+            <AlertTriangle className="w-8 h-8 opacity-80" />
             <div className="text-right">
-              <div className="text-3xl font-bold">{stats.totalAccesorios}</div>
-              <div className="text-xs opacity-90 mt-1">accesorios</div>
-            </div>
-          </div>
-          <div className="text-sm font-semibold mt-2">Accesorios</div>
-        </div>
-
-        <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-lg shadow-lg p-6 text-white">
-          <div className="flex items-center justify-between mb-2">
-            <AlertCircle className="w-8 h-8 opacity-80" />
-            <div className="text-right">
-              <div className="text-3xl font-bold">{stats.lowStock}</div>
-              <div className="text-xs opacity-90 mt-1">alertas</div>
+              <div className="text-3xl font-bold">{lowStockItems}</div>
+              <div className="text-xs opacity-90 mt-1">productos</div>
             </div>
           </div>
           <div className="text-sm font-semibold mt-2">Stock Bajo</div>
         </div>
 
-        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-lg p-6 text-white">
+        <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
           <div className="flex items-center justify-between mb-2">
-            <DollarSign className="w-8 h-8 opacity-80" />
+            <BarChart3 className="w-8 h-8 opacity-80" />
             <div className="text-right">
-              <div className="text-2xl font-bold">${(stats.totalValue / 1000).toFixed(0)}K</div>
-              <div className="text-xs opacity-90 mt-1">valor</div>
+              <div className="text-2xl font-bold">${totalSalesValue.toLocaleString('es-MX')}</div>
+              <div className="text-xs opacity-90 mt-1">MXN</div>
             </div>
           </div>
-          <div className="text-sm font-semibold mt-2">Valor Total</div>
+          <div className="text-sm font-semibold mt-2">Ventas Totales</div>
         </div>
       </div>
 
-      {lowStockParts.length > 0 && (
-        <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <h4 className="font-bold text-red-900 mb-2">Productos con Stock Bajo</h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                {lowStockParts.slice(0, 6).map(part => (
-                  <div key={part.id} className="bg-white rounded p-2 border border-red-200">
-                    <div className="text-sm font-semibold text-gray-800">{part.name}</div>
-                    <div className="text-xs text-gray-600">Stock: {part.stock_quantity} (Min: {part.min_stock_alert})</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="bg-white rounded-lg shadow-md border-2 border-gray-200">
+      {/* Pestañas */}
+      <div className="bg-white rounded-xl shadow-md border-2 border-gray-200">
         <div className="flex border-b border-gray-200">
           <button
-            onClick={() => setViewMode('inventory')}
+            onClick={() => setActiveTab('inventory')}
             className={`flex-1 px-6 py-4 font-semibold transition-colors ${
-              viewMode === 'inventory'
+              activeTab === 'inventory'
                 ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600'
                 : 'text-gray-600 hover:bg-gray-50'
             }`}
           >
             <div className="flex items-center justify-center gap-2">
               <Package className="w-5 h-5" />
-              Inventario ({filteredParts.length})
+              Inventario ({parts.length})
             </div>
           </button>
           <button
-            onClick={() => setViewMode('sales')}
+            onClick={() => setActiveTab('sales')}
             className={`flex-1 px-6 py-4 font-semibold transition-colors ${
-              viewMode === 'sales'
+              activeTab === 'sales'
                 ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600'
                 : 'text-gray-600 hover:bg-gray-50'
             }`}
           >
             <div className="flex items-center justify-center gap-2">
               <ShoppingCart className="w-5 h-5" />
-              Ventas ({stats.totalSales})
+              Ventas ({sales.length})
             </div>
           </button>
           <button
-            onClick={() => setViewMode('movements')}
+            onClick={() => setActiveTab('movements')}
             className={`flex-1 px-6 py-4 font-semibold transition-colors ${
-              viewMode === 'movements'
+              activeTab === 'movements'
                 ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600'
                 : 'text-gray-600 hover:bg-gray-50'
             }`}
           >
             <div className="flex items-center justify-center gap-2">
-              <BarChart3 className="w-5 h-5" />
-              Movimientos
+              <TrendingUp className="w-5 h-5" />
+              Movimientos ({movements.length})
             </div>
           </button>
         </div>
 
         <div className="p-6">
-          {viewMode === 'inventory' && (
+          {activeTab === 'inventory' && (
             <div className="space-y-4">
-              <div className="flex gap-4">
-                <div className="flex-1">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
                   <div className="relative">
-                    <Search className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                    <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                     <input
                       type="text"
-                      placeholder="Buscar por nombre, SKU o marca..."
+                      placeholder="Buscar productos..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                      className="pl-10 pr-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
                     />
                   </div>
+                  <select
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value as any)}
+                    className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                  >
+                    <option value="all">Todas las categorías</option>
+                    <option value="refaccion">Refacciones</option>
+                    <option value="accesorio">Accesorios</option>
+                  </select>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={lowStockFilter}
+                      onChange={(e) => setLowStockFilter(e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm text-gray-700">Solo stock bajo</span>
+                  </label>
                 </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => setCategoryFilter('all')}
-                    className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-                      categoryFilter === 'all'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
+                    onClick={() => setShowMovementModal(true)}
+                    className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold transition-all"
                   >
-                    Todos
+                    <TrendingUp className="w-5 h-5" />
+                    Movimiento
                   </button>
                   <button
-                    onClick={() => setCategoryFilter('refaccion')}
-                    className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-                      categoryFilter === 'refaccion'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
+                    onClick={() => setShowSaleModal(true)}
+                    className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-semibold transition-all"
                   >
-                    Refacciones
+                    <ShoppingCart className="w-5 h-5" />
+                    Nueva Venta
                   </button>
                   <button
-                    onClick={() => setCategoryFilter('accesorio')}
-                    className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-                      categoryFilter === 'accesorio'
-                        ? 'bg-green-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
+                    onClick={() => handleOpenPartModal()}
+                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold transition-all"
                   >
-                    Accesorios
+                    <Plus className="w-5 h-5" />
+                    Nuevo Producto
                   </button>
                 </div>
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-gradient-to-r from-blue-50 to-cyan-50 border-b-2 border-blue-200">
+                  <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">SKU</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Producto</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Categoría</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Marca</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Precio</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Stock</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Ubicación</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Acciones</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">SKU</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Producto</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Categoría</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Stock</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Precio Venta</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Costo</th>
+                      <th className="px-6 py-3 text-center text-xs font-bold text-gray-600 uppercase">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {filteredParts.map((part) => (
-                      <tr key={part.id} className="hover:bg-blue-50 transition-colors">
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="text-sm font-mono font-bold text-gray-700">{part.sku}</span>
+                      <tr key={part.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 text-sm font-mono text-gray-800">{part.sku}</td>
+                        <td className="px-6 py-4">
+                          <div>
+                            <div className="font-semibold text-gray-800">{part.name}</div>
+                            {part.brand && <div className="text-xs text-gray-500">{part.brand}</div>}
+                          </div>
                         </td>
-                        <td className="px-4 py-3">
-                          <div className="text-sm font-semibold text-gray-900">{part.name}</div>
-                          {part.subcategory && (
-                            <div className="text-xs text-gray-500">{part.subcategory}</div>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className={`px-2 py-1 text-xs font-bold rounded border ${getCategoryColor(part.category)}`}>
-                            {part.category}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="text-sm text-gray-700">{part.brand || 'N/A'}</span>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="text-sm font-semibold text-green-600">
-                            ${part.price_retail.toLocaleString('es-MX')}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className={`text-sm font-bold ${
-                            part.stock_quantity <= part.min_stock_alert ? 'text-red-600' :
-                            part.stock_quantity <= part.min_stock_alert * 2 ? 'text-yellow-600' :
-                            'text-green-600'
+                        <td className="px-6 py-4">
+                          <span className={`inline-block px-2 py-1 text-xs font-bold rounded ${
+                            part.category === 'refaccion' 
+                              ? 'bg-blue-100 text-blue-800' 
+                              : 'bg-green-100 text-green-800'
                           }`}>
-                            {part.stock_quantity}
+                            {part.category === 'refaccion' ? 'Refacción' : 'Accesorio'}
                           </span>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="text-sm text-gray-600">{part.location || 'N/A'}</span>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <span className={`font-bold ${
+                              part.stock_quantity <= part.min_stock_alert 
+                                ? 'text-red-600' 
+                                : 'text-gray-800'
+                            }`}>
+                              {part.stock_quantity}
+                            </span>
+                            {part.stock_quantity <= part.min_stock_alert && (
+                              <AlertTriangle className="w-4 h-4 text-red-600" />
+                            )}
+                          </div>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="flex gap-2">
+                        <td className="px-6 py-4 text-sm font-semibold text-gray-800">
+                          ${part.price_retail.toLocaleString('es-MX')}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          ${part.cost_price.toLocaleString('es-MX')}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center justify-center gap-2">
                             <button
-                              onClick={() => handleOpenModal(part)}
+                              onClick={() => handleOpenPartModal(part)}
                               className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors"
                             >
                               <Edit2 className="w-4 h-4" />
@@ -695,368 +630,419 @@ export function PartsInventoryModule() {
             </div>
           )}
 
-          {viewMode === 'sales' && (
+          {activeTab === 'sales' && (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                <div className="bg-blue-50 rounded-lg p-4 border-2 border-blue-200">
-                  <div className="text-sm text-gray-600">Total Ventas</div>
-                  <div className="text-2xl font-bold text-blue-600">{stats.totalSales}</div>
-                </div>
-                <div className="bg-green-50 rounded-lg p-4 border-2 border-green-200">
-                  <div className="text-sm text-gray-600">Valor Total</div>
-                  <div className="text-2xl font-bold text-green-600">
-                    ${stats.totalSalesValue.toLocaleString('es-MX')}
-                  </div>
-                </div>
-                <div className="bg-orange-50 rounded-lg p-4 border-2 border-orange-200">
-                  <div className="text-sm text-gray-600">Promedio</div>
-                  <div className="text-2xl font-bold text-orange-600">
-                    ${stats.totalSales > 0 ? (stats.totalSalesValue / stats.totalSales).toFixed(0) : 0}
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {sales.map((sale) => (
-                  <div key={sale.id} className="bg-white rounded-lg p-4 border-2 border-gray-200 hover:border-blue-400 transition-all">
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h4 className="font-bold text-gray-800">{sale.customer_name}</h4>
-                        <div className="text-sm text-gray-600">
-                          {sale.customer_phone && <span>{sale.customer_phone}</span>}
-                          <span className="ml-2 px-2 py-1 text-xs font-semibold rounded bg-gray-100 text-gray-700">
-                            {sale.customer_type}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-2xl font-bold text-green-600">
-                          ${sale.total.toLocaleString('es-MX')}
-                        </div>
-                        <div className="text-xs text-gray-500">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Fecha</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Cliente</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Tipo</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Items</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Total</th>
+                      <th className="px-6 py-3 text-center text-xs font-bold text-gray-600 uppercase">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {sales.map((sale) => (
+                      <tr key={sale.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 text-sm text-gray-800">
                           {new Date(sale.sale_date).toLocaleDateString('es-MX')}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="bg-gray-50 rounded p-3">
-                      <div className="text-xs font-semibold text-gray-600 mb-2">PRODUCTOS:</div>
-                      {Array.isArray(sale.items) && sale.items.map((item: any, idx: number) => (
-                        <div key={idx} className="text-sm text-gray-700 flex justify-between">
-                          <span>{item.part_name} x {item.quantity}</span>
-                          <span className="font-semibold">${(item.price * item.quantity).toLocaleString('es-MX')}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div>
+                            <div className="font-semibold text-gray-800">{sale.customer_name}</div>
+                            {sale.customer_phone && (
+                              <div className="text-xs text-gray-500">{sale.customer_phone}</div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-block px-2 py-1 text-xs font-bold rounded ${
+                            sale.customer_type === 'walk-in' 
+                              ? 'bg-gray-100 text-gray-800'
+                              : sale.customer_type === 'cliente'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-green-100 text-green-800'
+                          }`}>
+                            {sale.customer_type === 'walk-in' ? 'Walk-in' : 
+                             sale.customer_type === 'cliente' ? 'Cliente' : 'Lead'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {sale.items.length} productos
+                        </td>
+                        <td className="px-6 py-4 text-sm font-semibold text-gray-800">
+                          ${sale.total.toLocaleString('es-MX')}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center justify-center gap-2">
+                            <button className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors">
+                              <Eye className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
 
-          {viewMode === 'movements' && (
-            <div className="space-y-3">
-              {movements.map((movement) => {
-                const part = parts.find(p => p.id === movement.part_id);
-                return (
-                  <div key={movement.id} className="bg-white rounded-lg p-4 border-2 border-gray-200">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start gap-3">
-                        {movement.movement_type === 'entrada' && <ArrowUpCircle className="w-5 h-5 text-green-600 mt-0.5" />}
-                        {movement.movement_type === 'salida' && <ArrowDownCircle className="w-5 h-5 text-red-600 mt-0.5" />}
-                        {movement.movement_type === 'ajuste' && <BarChart3 className="w-5 h-5 text-blue-600 mt-0.5" />}
-                        {movement.movement_type === 'venta' && <ShoppingCart className="w-5 h-5 text-orange-600 mt-0.5" />}
-                        <div>
-                          <h4 className="font-bold text-gray-800">{part?.name || 'Producto eliminado'}</h4>
-                          <p className="text-sm text-gray-600 mt-1">{movement.reason || 'Sin motivo especificado'}</p>
-                          <div className="text-xs text-gray-500 mt-1">
-                            {new Date(movement.created_at).toLocaleString('es-MX')}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className={`text-xl font-bold ${
-                          movement.quantity > 0 ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                          {movement.quantity > 0 ? '+' : ''}{movement.quantity}
-                        </div>
-                        <div className="text-xs text-gray-600 mt-1">
-                          {movement.previous_stock} → {movement.new_stock}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+          {activeTab === 'movements' && (
+            <div className="space-y-4">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Fecha</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Producto</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Tipo</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Cantidad</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Stock Anterior</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Stock Nuevo</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Motivo</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {movements.map((movement) => {
+                      const part = parts.find(p => p.id === movement.part_id);
+                      return (
+                        <tr key={movement.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4 text-sm text-gray-800">
+                            {new Date(movement.created_at).toLocaleDateString('es-MX')}
+                          </td>
+                          <td className="px-6 py-4 text-sm font-semibold text-gray-800">
+                            {part?.name || 'Producto eliminado'}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`inline-block px-2 py-1 text-xs font-bold rounded ${
+                              movement.movement_type === 'entrada' 
+                                ? 'bg-green-100 text-green-800'
+                                : movement.movement_type === 'salida'
+                                ? 'bg-red-100 text-red-800'
+                                : movement.movement_type === 'venta'
+                                ? 'bg-purple-100 text-purple-800'
+                                : 'bg-blue-100 text-blue-800'
+                            }`}>
+                              {movement.movement_type}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm font-semibold text-gray-800">
+                            {movement.quantity > 0 ? '+' : ''}{movement.quantity}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600">
+                            {movement.previous_stock}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600">
+                            {movement.new_stock}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600">
+                            {movement.reason || '-'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
       </div>
 
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 overflow-auto" onClick={() => setShowModal(false)}>
-          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full my-8" onClick={(e) => e.stopPropagation()}>
-            <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 bg-white rounded-t-xl">
+      {/* Modal de Producto */}
+      {showPartModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setShowPartModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
               <h3 className="text-xl font-bold text-gray-800">
                 {editingPart ? 'Editar Producto' : 'Nuevo Producto'}
               </h3>
-              <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700">
+              <button onClick={() => setShowPartModal(false)} className="text-gray-500 hover:text-gray-700">
                 <X className="w-6 h-6" />
               </button>
             </div>
-
-            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">SKU *</label>
                   <input
                     type="text"
-                    value={formData.sku}
-                    onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
+                    value={partFormData.sku}
+                    onChange={(e) => setPartFormData({ ...partFormData, sku: e.target.value })}
                     className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
                     placeholder="REF-001"
+                    required
                   />
                 </div>
-
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Nombre *</label>
                   <input
                     type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    value={partFormData.name}
+                    onChange={(e) => setPartFormData({ ...partFormData, name: e.target.value })}
                     className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                    placeholder="Filtro de Aceite"
+                    placeholder="Filtro de aceite"
+                    required
                   />
                 </div>
+              </div>
 
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Categoría *</label>
                   <select
-                    value={formData.category}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value as 'refaccion' | 'accesorio' })}
+                    value={partFormData.category}
+                    onChange={(e) => setPartFormData({ ...partFormData, category: e.target.value as any })}
                     className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                    required
                   >
                     <option value="refaccion">Refacción</option>
                     <option value="accesorio">Accesorio</option>
                   </select>
                 </div>
-
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Subcategoría</label>
                   <input
                     type="text"
-                    value={formData.subcategory}
-                    onChange={(e) => setFormData({ ...formData, subcategory: e.target.value })}
+                    value={partFormData.subcategory}
+                    onChange={(e) => setPartFormData({ ...partFormData, subcategory: e.target.value })}
                     className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                    placeholder="Filtros, Sistema de Frenado..."
+                    placeholder="Filtros, Frenos, etc."
                   />
                 </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Marca</label>
-                  <input
-                    type="text"
-                    value={formData.brand}
-                    onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                    placeholder="Yamaha, NGK, DID..."
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Precio Venta *</label>
-                  <input
-                    type="number"
-                    value={formData.price_retail}
-                    onChange={(e) => setFormData({ ...formData, price_retail: Number(e.target.value) })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Costo</label>
-                  <input
-                    type="number"
-                    value={formData.cost_price}
-                    onChange={(e) => setFormData({ ...formData, cost_price: Number(e.target.value) })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Stock Inicial *</label>
-                  <input
-                    type="number"
-                    value={formData.stock_quantity}
-                    onChange={(e) => setFormData({ ...formData, stock_quantity: Number(e.target.value) })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Alerta Stock Mínimo</label>
-                  <input
-                    type="number"
-                    value={formData.min_stock_alert}
-                    onChange={(e) => setFormData({ ...formData, min_stock_alert: Number(e.target.value) })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Ubicación</label>
-                  <input
-                    type="text"
-                    value={formData.location}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                    placeholder="A-01, B-02..."
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Proveedor</label>
-                  <input
-                    type="text"
-                    value={formData.supplier}
-                    onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                    placeholder="Distribuidora Yamaha MX"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Modelos Compatibles (separados por coma)</label>
-                <input
-                  type="text"
-                  value={formData.compatible_models}
-                  onChange={(e) => setFormData({ ...formData, compatible_models: e.target.value })}
-                  className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                  placeholder="MT-07, MT-09, YZF-R3"
-                />
               </div>
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Descripción</label>
                 <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  value={partFormData.description}
+                  onChange={(e) => setPartFormData({ ...partFormData, description: e.target.value })}
                   className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none h-20"
-                  placeholder="Descripción del producto"
+                  placeholder="Descripción detallada del producto"
                 />
               </div>
-            </div>
 
-            <div className="border-t border-gray-200 px-6 py-4 flex gap-3 sticky bottom-0 bg-white rounded-b-xl">
-              <button
-                onClick={handleSubmit}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition-all"
-              >
-                {editingPart ? 'Actualizar' : 'Registrar'} Producto
-              </button>
-              <button
-                onClick={() => setShowModal(false)}
-                className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-all"
-              >
-                Cancelar
-              </button>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Marca</label>
+                  <input
+                    type="text"
+                    value={partFormData.brand}
+                    onChange={(e) => setPartFormData({ ...partFormData, brand: e.target.value })}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                    placeholder="Yamaha, NGK, etc."
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Ubicación</label>
+                  <input
+                    type="text"
+                    value={partFormData.location}
+                    onChange={(e) => setPartFormData({ ...partFormData, location: e.target.value })}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                    placeholder="A-01, B-02, etc."
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Modelos Compatibles</label>
+                <input
+                  type="text"
+                  value={partFormData.compatible_models}
+                  onChange={(e) => setPartFormData({ ...partFormData, compatible_models: e.target.value })}
+                  className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                  placeholder="MT-07, YZF-R3, Tenere 700 (separados por comas)"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Precio Venta (MXN)</label>
+                  <input
+                    type="number"
+                    value={partFormData.sale_price}
+                    onChange={(e) => setPartFormData({ ...partFormData, sale_price: e.target.value })}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                    placeholder="0"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Costo (MXN)</label>
+                  <input
+                    type="number"
+                    value={partFormData.cost}
+                    onChange={(e) => setPartFormData({ ...partFormData, cost: e.target.value })}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                    placeholder="0"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Stock Inicial</label>
+                  <input
+                    type="number"
+                    value={partFormData.stock}
+                    onChange={(e) => setPartFormData({ ...partFormData, stock: e.target.value })}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                    placeholder="0"
+                    min="0"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Stock Mínimo</label>
+                  <input
+                    type="number"
+                    value={partFormData.min_stock}
+                    onChange={(e) => setPartFormData({ ...partFormData, min_stock: e.target.value })}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                    placeholder="0"
+                    min="0"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Proveedor</label>
+                <input
+                  type="text"
+                  value={partFormData.supplier}
+                  onChange={(e) => setPartFormData({ ...partFormData, supplier: e.target.value })}
+                  className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                  placeholder="Distribuidora Yamaha MX"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={partFormData.active}
+                  onChange={(e) => setPartFormData({ ...partFormData, active: e.target.checked })}
+                  className="w-4 h-4"
+                />
+                <label className="text-sm font-medium text-gray-700">Producto activo</label>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={handleSavePart}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition-all"
+                >
+                  {editingPart ? 'Actualizar' : 'Crear'} Producto
+                </button>
+                <button
+                  onClick={() => setShowPartModal(false)}
+                  className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
+      {/* Modal de Nueva Venta */}
       {showSaleModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 overflow-auto" onClick={() => setShowSaleModal(false)}>
-          <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full my-8" onClick={(e) => e.stopPropagation()}>
-            <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 bg-white rounded-t-xl">
-              <h3 className="text-xl font-bold text-gray-800">Registrar Venta</h3>
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setShowSaleModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <h3 className="text-xl font-bold text-gray-800">Nueva Venta</h3>
               <button onClick={() => setShowSaleModal(false)} className="text-gray-500 hover:text-gray-700">
                 <X className="w-6 h-6" />
               </button>
             </div>
-
-            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-6 space-y-6">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Nombre del Cliente *</label>
                   <input
                     type="text"
-                    value={saleData.customer_name}
-                    onChange={(e) => setSaleData({ ...saleData, customer_name: e.target.value })}
+                    value={saleFormData.customer_name}
+                    onChange={(e) => setSaleFormData({ ...saleFormData, customer_name: e.target.value })}
                     className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                    placeholder="Juan Pérez"
+                    required
                   />
                 </div>
-
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Teléfono</label>
                   <input
-                    type="text"
-                    value={saleData.customer_phone}
-                    onChange={(e) => setSaleData({ ...saleData, customer_phone: e.target.value })}
+                    type="tel"
+                    value={saleFormData.customer_phone}
+                    onChange={(e) => setSaleFormData({ ...saleFormData, customer_phone: e.target.value })}
                     className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                    placeholder="5512345678"
                   />
                 </div>
-
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Tipo de Cliente</label>
                   <select
-                    value={saleData.customer_type}
-                    onChange={(e) => setSaleData({ ...saleData, customer_type: e.target.value as any })}
+                    value={saleFormData.customer_type}
+                    onChange={(e) => setSaleFormData({ ...saleFormData, customer_type: e.target.value as any })}
                     className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
                   >
                     <option value="walk-in">Walk-in</option>
-                    <option value="cliente">Cliente Registrado</option>
+                    <option value="cliente">Cliente</option>
                     <option value="lead">Lead</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Método de Pago</label>
-                  <select
-                    value={saleData.payment_method}
-                    onChange={(e) => setSaleData({ ...saleData, payment_method: e.target.value })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                  >
-                    <option value="Efectivo">Efectivo</option>
-                    <option value="Tarjeta">Tarjeta</option>
-                    <option value="Transferencia">Transferencia</option>
                   </select>
                 </div>
               </div>
 
-              <div className="border-t-2 border-gray-200 pt-4">
-                <h4 className="text-lg font-bold text-gray-800 mb-4">Agregar Productos</h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div className="border-t pt-6">
+                <h4 className="text-lg font-semibold text-gray-800 mb-4">Agregar Productos</h4>
+                <div className="grid grid-cols-4 gap-4 mb-4">
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">Producto</label>
                     <select
-                      value={movementData.part_id}
-                      onChange={(e) => setMovementData({ ...movementData, part_id: e.target.value })}
+                      value={newSaleItem.part_id}
+                      onChange={(e) => setNewSaleItem({ ...newSaleItem, part_id: e.target.value })}
                       className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
                     >
-                      <option value="">Seleccionar...</option>
+                      <option value="">Seleccionar producto</option>
                       {parts.filter(p => p.active && p.stock_quantity > 0).map(part => (
                         <option key={part.id} value={part.id}>
-                          {part.name} (Stock: {part.stock_quantity}) - ${part.price_retail}
+                          {part.name} (Stock: {part.stock_quantity})
                         </option>
                       ))}
                     </select>
                   </div>
-
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">Cantidad</label>
                     <input
                       type="number"
-                      min="1"
-                      value={movementData.quantity}
-                      onChange={(e) => setMovementData({ ...movementData, quantity: Number(e.target.value) })}
+                      value={saleFormData.quantity}
+                      onChange={(e) => setSaleFormData({ ...saleFormData, quantity: e.target.value })}
                       className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                      placeholder="0"
+                      min="1"
                     />
                   </div>
-
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Precio Unitario</label>
+                    <input
+                      type="number"
+                      value={newSaleItem.unit_price}
+                      onChange={(e) => setNewSaleItem({ ...newSaleItem, unit_price: e.target.value })}
+                      className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                      placeholder="0.00"
+                      step="0.01"
+                      min="0"
+                    />
+                  </div>
                   <div className="flex items-end">
                     <button
-                      onClick={handleAddItemToSale}
+                      onClick={handleAddSaleItem}
                       className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold transition-all"
                     >
                       Agregar
@@ -1064,53 +1050,42 @@ export function PartsInventoryModule() {
                   </div>
                 </div>
 
-                {saleData.items.length > 0 && (
-                  <div className="bg-gray-50 rounded-lg p-4 border-2 border-gray-200">
-                    <div className="space-y-2">
-                      {saleData.items.map((item) => (
-                        <div key={item.part_id} className="flex items-center justify-between bg-white rounded p-3">
-                          <div className="flex-1">
-                            <div className="font-semibold text-gray-800">{item.part_name}</div>
-                            <div className="text-sm text-gray-600">
-                              {item.quantity} x ${item.price.toLocaleString('es-MX')}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-4">
-                            <span className="text-lg font-bold text-gray-800">
-                              ${(item.price * item.quantity).toLocaleString('es-MX')}
-                            </span>
-                            <button
-                              onClick={() => handleRemoveItemFromSale(item.part_id)}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="mt-4 pt-4 border-t-2 border-gray-300">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-gray-700">Subtotal:</span>
+                {saleFormData.items.length > 0 && (
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-2 text-left text-xs font-bold text-gray-600 uppercase">Producto</th>
+                          <th className="px-4 py-2 text-left text-xs font-bold text-gray-600 uppercase">Cantidad</th>
+                          <th className="px-4 py-2 text-left text-xs font-bold text-gray-600 uppercase">Precio Unit.</th>
+                          <th className="px-4 py-2 text-left text-xs font-bold text-gray-600 uppercase">Total</th>
+                          <th className="px-4 py-2 text-center text-xs font-bold text-gray-600 uppercase">Acción</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {saleFormData.items.map((item, index) => (
+                          <tr key={index}>
+                            <td className="px-4 py-2 text-sm text-gray-800">{item.part_name}</td>
+                            <td className="px-4 py-2 text-sm text-gray-800">{item.quantity}</td>
+                            <td className="px-4 py-2 text-sm text-gray-800">${item.unit_price.toLocaleString('es-MX')}</td>
+                            <td className="px-4 py-2 text-sm font-semibold text-gray-800">${item.total.toLocaleString('es-MX')}</td>
+                            <td className="px-4 py-2 text-center">
+                              <button
+                                onClick={() => handleRemoveSaleItem(index)}
+                                className="text-red-600 hover:text-red-800"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div className="bg-gray-50 px-4 py-3 border-t">
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold text-gray-800">Total:</span>
                         <span className="text-xl font-bold text-gray-800">
-                          ${calculateSaleTotal().subtotal.toLocaleString('es-MX')}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-gray-700">Descuento:</span>
-                        <input
-                          type="number"
-                          min="0"
-                          value={saleData.discount}
-                          onChange={(e) => setSaleData({ ...saleData, discount: Number(e.target.value) })}
-                          className="w-32 px-3 py-1 border-2 border-gray-300 rounded-lg text-right"
-                        />
-                      </div>
-                      <div className="flex justify-between items-center pt-2 border-t-2 border-gray-300">
-                        <span className="text-lg font-bold text-gray-800">TOTAL:</span>
-                        <span className="text-2xl font-bold text-green-600">
-                          ${calculateSaleTotal().total.toLocaleString('es-MX')}
+                          ${saleFormData.items.reduce((sum, item) => sum + item.total, 0).toLocaleString('es-MX')}
                         </span>
                       </div>
                     </div>
@@ -1118,54 +1093,72 @@ export function PartsInventoryModule() {
                 )}
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Notas</label>
-                <textarea
-                  value={saleData.notes}
-                  onChange={(e) => setSaleData({ ...saleData, notes: e.target.value })}
-                  className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none h-20"
-                  placeholder="Notas adicionales..."
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Método de Pago</label>
+                  <select
+                    value={saleFormData.payment_method}
+                    onChange={(e) => setSaleFormData({ ...saleFormData, payment_method: e.target.value })}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                  >
+                    <option value="">Seleccionar método</option>
+                    <option value="efectivo">Efectivo</option>
+                    <option value="tarjeta">Tarjeta</option>
+                    <option value="transferencia">Transferencia</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Notas</label>
+                  <input
+                    type="text"
+                    value={saleFormData.notes}
+                    onChange={(e) => setSaleFormData({ ...saleFormData, notes: e.target.value })}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                    placeholder="Notas adicionales"
+                  />
+                </div>
               </div>
-            </div>
 
-            <div className="border-t border-gray-200 px-6 py-4 flex gap-3 sticky bottom-0 bg-white rounded-b-xl">
-              <button
-                onClick={handleSubmitSale}
-                className="flex-1 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold transition-all"
-              >
-                Completar Venta
-              </button>
-              <button
-                onClick={() => setShowSaleModal(false)}
-                className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-all"
-              >
-                Cancelar
-              </button>
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={handleSaveSale}
+                  disabled={saleFormData.items.length === 0}
+                  className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white px-6 py-3 rounded-lg font-semibold transition-all"
+                >
+                  Registrar Venta
+                </button>
+                <button
+                  onClick={() => setShowSaleModal(false)}
+                  className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
+      {/* Modal de Movimiento de Inventario */}
       {showMovementModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setShowMovementModal(false)}>
-          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
             <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-              <h3 className="text-xl font-bold text-gray-800">Registrar Movimiento de Inventario</h3>
+              <h3 className="text-xl font-bold text-gray-800">Movimiento de Inventario</h3>
               <button onClick={() => setShowMovementModal(false)} className="text-gray-500 hover:text-gray-700">
                 <X className="w-6 h-6" />
               </button>
             </div>
-
             <div className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Producto *</label>
                 <select
-                  value={movementData.part_id}
-                  onChange={(e) => setMovementData({ ...movementData, part_id: e.target.value })}
+                  value={movementFormData.part_id}
+                  onChange={(e) => setMovementFormData({ ...movementFormData, part_id: e.target.value })}
                   className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                  required
                 >
-                  <option value="">Seleccionar producto...</option>
+                  <option value="">Seleccionar producto</option>
                   {parts.filter(p => p.active).map(part => (
                     <option key={part.id} value={part.id}>
                       {part.name} (Stock actual: {part.stock_quantity})
@@ -1177,9 +1170,10 @@ export function PartsInventoryModule() {
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Tipo de Movimiento *</label>
                 <select
-                  value={movementData.movement_type}
-                  onChange={(e) => setMovementData({ ...movementData, movement_type: e.target.value as any })}
+                  value={movementFormData.movement_type}
+                  onChange={(e) => setMovementFormData({ ...movementFormData, movement_type: e.target.value as any })}
                   className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                  required
                 >
                   <option value="entrada">Entrada (Aumentar stock)</option>
                   <option value="salida">Salida (Reducir stock)</option>
@@ -1191,37 +1185,41 @@ export function PartsInventoryModule() {
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Cantidad *</label>
                 <input
                   type="number"
-                  value={movementData.quantity}
-                  onChange={(e) => setMovementData({ ...movementData, quantity: Number(e.target.value) })}
+                  value={movementFormData.quantity}
+                  onChange={(e) => setMovementFormData({ ...movementFormData, quantity: e.target.value })}
                   className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                  placeholder="Cantidad"
+                  placeholder="0"
+                  min="1"
+                  required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Motivo</label>
-                <textarea
-                  value={movementData.reason}
-                  onChange={(e) => setMovementData({ ...movementData, reason: e.target.value })}
-                  className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none h-20"
-                  placeholder="Describe el motivo del movimiento..."
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Motivo *</label>
+                <input
+                  type="text"
+                  value={movementFormData.reason}
+                  onChange={(e) => setMovementFormData({ ...movementFormData, reason: e.target.value })}
+                  className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                  placeholder="Recepción de mercancía, devolución, etc."
+                  required
                 />
               </div>
-            </div>
 
-            <div className="border-t border-gray-200 px-6 py-4 flex gap-3">
-              <button
-                onClick={handleSubmitMovement}
-                className="flex-1 bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 rounded-lg font-semibold transition-all"
-              >
-                Registrar Movimiento
-              </button>
-              <button
-                onClick={() => setShowMovementModal(false)}
-                className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-all"
-              >
-                Cancelar
-              </button>
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={handleSaveMovement}
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold transition-all"
+                >
+                  Registrar Movimiento
+                </button>
+                <button
+                  onClick={() => setShowMovementModal(false)}
+                  className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+              </div>
             </div>
           </div>
         </div>

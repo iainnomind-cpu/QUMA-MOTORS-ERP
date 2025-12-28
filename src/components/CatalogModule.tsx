@@ -1,10 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase, CatalogItem } from '../lib/supabase';
 import { PartsInventoryModule } from './PartsInventoryModule';
-import {
-  Package, CheckCircle, XCircle, Plus, Edit2, Trash2, Eye, FileText,
-  Bike, TrendingUp, DollarSign, Gauge, Palette, X, Search, Filter, Wrench, Upload, Image as ImageIcon
-} from 'lucide-react';
+import { Package, CheckCircle, XCircle, Plus, CreditCard as Edit2, Trash2, Eye, FileText, Bike, TrendingUp, DollarSign, Gauge, Palette, X, Search, Filter, Wrench, Upload, Image as ImageIcon } from 'lucide-react';
 
 type ViewMode = 'grid' | 'table';
 type FilterSegment = 'all' | 'Deportiva' | 'Naked' | 'Doble Propósito' | 'Scooter' | 'Trabajo' | 'Street' | 'Cross/Country' | 'Carros' | 'Cuatrimoto/ATV: Deportivas' | 'Cuatrimoto/ATV: Utilitarios' | 'Nuevos lanzamientos';
@@ -30,19 +27,19 @@ export function CatalogModule() {
   const [formData, setFormData] = useState({
     segment: 'Deportiva',
     model: '',
-    price_cash: 0,
-    stock: 0,
+    price_cash: '',
+    stock: '',
     test_drive_available: false,
     year: new Date().getFullYear(),
     color_options: '',
-    engine_cc: 0,
+    engine_cc: '',
     engine_type: '',
     max_power: '',
     max_torque: '',
     transmission: '',
-    fuel_capacity: 0,
-    weight: 0,
-    seat_height: 0,
+    fuel_capacity: '',
+    weight: '',
+    seat_height: '',
     abs: false,
     traction_control: false,
     riding_modes: '',
@@ -83,19 +80,19 @@ export function CatalogModule() {
       setFormData({
         segment: item.segment,
         model: item.model,
-        price_cash: item.price_cash,
-        stock: item.stock,
+        price_cash: item.price_cash || '',
+        stock: item.stock || '',
         test_drive_available: item.test_drive_available,
         year: item.year,
         color_options: item.color_options.join(', '),
-        engine_cc: item.engine_cc || 0,
+        engine_cc: item.engine_cc || '',
         engine_type: item.engine_type || '',
         max_power: item.max_power || '',
         max_torque: item.max_torque || '',
         transmission: item.transmission || '',
-        fuel_capacity: item.fuel_capacity || 0,
-        weight: item.weight || 0,
-        seat_height: item.seat_height || 0,
+        fuel_capacity: item.fuel_capacity || '',
+        weight: item.weight || '',
+        seat_height: item.seat_height || '',
         abs: item.abs,
         traction_control: item.traction_control,
         riding_modes: item.riding_modes.join(', '),
@@ -111,19 +108,19 @@ export function CatalogModule() {
       setFormData({
         segment: 'Deportiva',
         model: '',
-        price_cash: 0,
-        stock: 0,
+        price_cash: '',
+        stock: '',
         test_drive_available: false,
         year: new Date().getFullYear(),
         color_options: '',
-        engine_cc: 0,
+        engine_cc: '',
         engine_type: '',
         max_power: '',
         max_torque: '',
         transmission: '',
-        fuel_capacity: 0,
-        weight: 0,
-        seat_height: 0,
+        fuel_capacity: '',
+        weight: '',
+        seat_height: '',
         abs: false,
         traction_control: false,
         riding_modes: '',
@@ -206,22 +203,23 @@ export function CatalogModule() {
       }
     }
 
+    // Convertir strings a números solo al enviar
     const dataToSubmit = {
       segment: formData.segment,
       model: formData.model,
-      price_cash: formData.price_cash,
-      stock: formData.stock,
+      price_cash: formData.price_cash ? parseFloat(formData.price_cash) : 0,
+      stock: formData.stock ? parseInt(formData.stock) : 0,
       test_drive_available: formData.test_drive_available,
       year: formData.year,
       color_options: formData.color_options.split(',').map(c => c.trim()).filter(c => c),
-      engine_cc: formData.engine_cc || null,
+      engine_cc: formData.engine_cc ? parseInt(formData.engine_cc) : null,
       engine_type: formData.engine_type || null,
       max_power: formData.max_power || null,
       max_torque: formData.max_torque || null,
       transmission: formData.transmission || null,
-      fuel_capacity: formData.fuel_capacity || null,
-      weight: formData.weight || null,
-      seat_height: formData.seat_height || null,
+      fuel_capacity: formData.fuel_capacity ? parseFloat(formData.fuel_capacity) : null,
+      weight: formData.weight ? parseFloat(formData.weight) : null,
+      seat_height: formData.seat_height ? parseInt(formData.seat_height) : null,
       abs: formData.abs,
       traction_control: formData.traction_control,
       riding_modes: formData.riding_modes.split(',').map(m => m.trim()).filter(m => m),
@@ -736,7 +734,7 @@ export function CatalogModule() {
                   <input
                     type="number"
                     value={formData.price_cash}
-                    onChange={(e) => setFormData({ ...formData, price_cash: Number(e.target.value) })}
+                    onChange={(e) => setFormData({ ...formData, price_cash: e.target.value })}
                     className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
                   />
                 </div>
@@ -746,7 +744,7 @@ export function CatalogModule() {
                   <input
                     type="number"
                     value={formData.stock}
-                    onChange={(e) => setFormData({ ...formData, stock: Number(e.target.value) })}
+                    onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
                     className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
                   />
                 </div>
@@ -766,7 +764,7 @@ export function CatalogModule() {
                   <input
                     type="number"
                     value={formData.engine_cc}
-                    onChange={(e) => setFormData({ ...formData, engine_cc: Number(e.target.value) })}
+                    onChange={(e) => setFormData({ ...formData, engine_cc: e.target.value })}
                     className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
                   />
                 </div>
@@ -821,7 +819,7 @@ export function CatalogModule() {
                     type="number"
                     step="0.1"
                     value={formData.fuel_capacity}
-                    onChange={(e) => setFormData({ ...formData, fuel_capacity: Number(e.target.value) })}
+                    onChange={(e) => setFormData({ ...formData, fuel_capacity: e.target.value })}
                     className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
                   />
                 </div>
@@ -831,7 +829,7 @@ export function CatalogModule() {
                   <input
                     type="number"
                     value={formData.weight}
-                    onChange={(e) => setFormData({ ...formData, weight: Number(e.target.value) })}
+                    onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
                     className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
                   />
                 </div>
@@ -841,7 +839,7 @@ export function CatalogModule() {
                   <input
                     type="number"
                     value={formData.seat_height}
-                    onChange={(e) => setFormData({ ...formData, seat_height: Number(e.target.value) })}
+                    onChange={(e) => setFormData({ ...formData, seat_height: e.target.value })}
                     className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
                   />
                 </div>
