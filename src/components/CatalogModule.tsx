@@ -262,18 +262,21 @@ export function CatalogModule() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar este modelo del catálogo?')) return;
+    if (!confirm('¿Estás seguro de eliminar permanentemente este modelo del catálogo? Esta acción no se puede deshacer y eliminará el modelo de todos los módulos del sistema.')) return;
 
     const { error } = await supabase
       .from('catalog')
-      .update({ active: false })
+      .delete()
       .eq('id', id);
 
     if (!error) {
-      setSuccessMessage('Modelo desactivado');
+      setSuccessMessage('Modelo eliminado permanentemente');
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
       loadCatalog();
+    } else {
+      alert('Error al eliminar el modelo. Por favor intenta nuevamente.');
+      console.error('Error al eliminar:', error);
     }
   };
 
