@@ -8,6 +8,7 @@ export function UsersModule() {
   const { user } = useAuth();
   const [users, setUsers] = useState<SystemUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false); // NUEVO: estado para el spinner
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<SystemUser | null>(null);
@@ -50,80 +51,83 @@ export function UsersModule() {
     return password.length >= 8;
   };
 
+  // FUNCIÓN ACTUALIZADA CON EDGE FUNCTION
   const handleCreateUser = async () => {
     setError('');
+    setCreating(true); // Activar spinner
 
-    if (!newUser.full_name.trim()) {
-      setError('El nombre completo es requerido');
-      return;
-    }
-
-    if (!newUser.email.trim()) {
-      setError('El email es requerido');
-      return;
-    }
-
-    if (!validateEmail(newUser.email)) {
-      setError('Por favor ingresa un email válido');
-      return;
-    }
-
-    if (!newUser.password.trim()) {
-      setError('La contraseña es requerida');
-      return;
-    }
-
-    if (!validatePassword(newUser.password)) {
-      setError('La contraseña debe tener al menos 8 caracteres');
-      return;
-    }
-
-    const { data: existingUser } = await supabase
-      .from('system_users')
-      .select('email')
-      .eq('email', newUser.email.trim())
-      .maybeSingle();
-
-    if (existingUser) {
-      setError('Ya existe un usuario con este email');
-      return;
-    }
-
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: newUser.email.trim(),
-      password: newUser.password,
-      options: {
-        data: {
-          full_name: newUser.full_name.trim(),
-          role: newUser.role
-        }
-      }
-    });
-
-    if (authError) {
-      setError(`Error al crear usuario: ${authError.message}`);
-      return;
-    }
-
-    if (authData.user) {
-      const { error: profileError } = await supabase
-        .from('system_users')
-        .insert([{
-          id: authData.user.id,
-          email: newUser.email.trim(),
-          full_name: newUser.full_name.trim(),
-          role: newUser.role,
-          phone: newUser.phone.trim() || null,
-          status: 'active',
-          permissions: {},
-          created_by: user?.id || null
-        }]);
-
-      if (profileError) {
-        setError(`Error al crear perfil: ${profileError.message}`);
+    try {
+      // Validaciones
+      if (!newUser.full_name.trim()) {
+        setError('El nombre completo es requerido');
+        setCreating(false);
         return;
       }
 
+      if (!newUser.email.trim()) {
+        setError('El email es requerido');
+        setCreating(false);
+        return;
+      }
+
+      if (!validateEmail(newUser.email)) {
+        setError('Por favor ingresa un email válido');
+        setCreating(false);
+        return;
+      }
+
+      if (!newUser.password.trim()) {
+        setError('La contraseña es requerida');
+        setCreating(false);
+        return;
+      }
+
+      if (!validatePassword(newUser.password)) {
+        setError('La contraseña debe tener al menos 8 caracteres');
+        setCreating(false);
+        return;
+      }
+
+      // Verificar si el email ya existe
+      const { data: existingUser } = await supabase
+        .from('system_users')
+        .select('email')
+        .eq('email', newUser.email.trim())
+        .maybeSingle();
+
+      if (existingUser) {
+        setError('Ya existe un usuario con este email');
+        setCreating(false);
+        return;
+      }
+
+      // 🔥 LLAMAR A LA EDGE FUNCTION 🔥
+      const { data, error: functionError } = await supabase.functions.invoke('create-user', {
+        body: {
+          email: newUser.email.trim(),
+          password: newUser.password,
+          full_name: newUser.full_name.trim(),
+          role: newUser.role,
+          phone: newUser.phone.trim() || null,
+          created_by: user?.id || null
+        }
+      });
+
+      if (functionError) {
+        console.error('Function error:', functionError);
+        setError(`Error al crear usuario: ${functionError.message}`);
+        setCreating(false);
+        return;
+      }
+
+      // Verificar si hay error en la respuesta de la función
+      if (data?.error) {
+        setError(`Error: ${data.error}`);
+        setCreating(false);
+        return;
+      }
+
+      // Usuario creado exitosamente
       setSuccess('Usuario creado exitosamente');
       setTimeout(() => setSuccess(''), 3000);
       setShowCreateModal(false);
@@ -135,6 +139,12 @@ export function UsersModule() {
         phone: ''
       });
       loadUsers();
+
+    } catch (err: any) {
+      console.error('Error creating user:', err);
+      setError(`Error inesperado: ${err.message}`);
+    } finally {
+      setCreating(false); // Desactivar spinner
     }
   };
 
@@ -435,15 +445,20 @@ export function UsersModule() {
         </div>
       </div>
 
+      {/* MODAL CREAR USUARIO - ACTUALIZADO CON SPINNER */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setShowCreateModal(false)}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => !creating && setShowCreateModal(false)}>
           <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full" onClick={(e) => e.stopPropagation()}>
             <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700 rounded-t-xl">
               <h3 className="text-xl font-bold text-white flex items-center gap-2">
                 <Plus className="w-6 h-6" />
                 Crear Nuevo Usuario
               </h3>
-              <button onClick={() => setShowCreateModal(false)} className="text-white hover:bg-blue-800 rounded-full p-1 transition-colors">
+              <button 
+                onClick={() => setShowCreateModal(false)} 
+                disabled={creating}
+                className="text-white hover:bg-blue-800 rounded-full p-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 <X className="w-6 h-6" />
               </button>
             </div>
@@ -470,6 +485,7 @@ export function UsersModule() {
                     className="block w-full pl-10 pr-3 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                     placeholder="Juan Pérez"
                     required
+                    disabled={creating}
                   />
                 </div>
               </div>
@@ -489,6 +505,7 @@ export function UsersModule() {
                     className="block w-full pl-10 pr-3 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                     placeholder="juan@qumamotors.com"
                     required
+                    disabled={creating}
                   />
                 </div>
               </div>
@@ -509,6 +526,7 @@ export function UsersModule() {
                     placeholder="Mínimo 8 caracteres"
                     required
                     minLength={8}
+                    disabled={creating}
                   />
                 </div>
                 <p className="text-xs text-gray-500 mt-1">Debe tener al menos 8 caracteres</p>
@@ -527,6 +545,7 @@ export function UsersModule() {
                     onChange={(e) => setNewUser({ ...newUser, role: e.target.value as Role })}
                     className="block w-full pl-10 pr-3 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                     required
+                    disabled={creating}
                   >
                     <option value="vendedor">Vendedor</option>
                     <option value="servicio">Servicio Técnico</option>
@@ -550,6 +569,7 @@ export function UsersModule() {
                     onChange={(e) => setNewUser({ ...newUser, phone: e.target.value })}
                     className="block w-full pl-10 pr-3 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                     placeholder="5512345678"
+                    disabled={creating}
                   />
                 </div>
               </div>
@@ -557,14 +577,25 @@ export function UsersModule() {
               <div className="flex gap-3 pt-4">
                 <button
                   onClick={handleCreateUser}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2"
+                  disabled={creating}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Plus className="w-5 h-5" />
-                  Crear Usuario
+                  {creating ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                      Creando...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-5 h-5" />
+                      Crear Usuario
+                    </>
+                  )}
                 </button>
                 <button
                   onClick={() => setShowCreateModal(false)}
-                  className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-all"
+                  disabled={creating}
+                  className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancelar
                 </button>
