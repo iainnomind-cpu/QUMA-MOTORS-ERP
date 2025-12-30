@@ -195,11 +195,12 @@ export interface LeadAttachment {
 
 export interface SystemUser {
   id: string;
+  name: string;
   email: string;
-  full_name: string;
   role: string;
-  phone: string | null;
-  active: boolean;
+  status: string;
+  permissions: Record<string, any>;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 }
