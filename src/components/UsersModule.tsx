@@ -1,17 +1,29 @@
 import { useState, useEffect } from 'react';
-import { supabase, SystemUser } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Users, Plus, X, Lock, Mail, Phone, User, Shield, CheckCircle, XCircle, Edit2, Trash2, AlertCircle } from 'lucide-react';
 import { getRoleBadgeColor, getRoleDisplayName, type Role } from '../utils/permissions';
 
+// Interfaz para user_profiles (la tabla correcta)
+interface UserProfile {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role: string;
+  phone: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export function UsersModule() {
   const { user } = useAuth();
-  const [users, setUsers] = useState<SystemUser[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<SystemUser | null>(null);
+  const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -31,8 +43,9 @@ export function UsersModule() {
 
   const loadUsers = async () => {
     setLoading(true);
+    // CAMBIO: Consultar user_profiles en lugar de system_users
     const { data, error } = await supabase
-      .from('system_users')
+      .from('user_profiles')
       .select('*')
       .order('created_at', { ascending: false });
 
@@ -51,7 +64,6 @@ export function UsersModule() {
     return password.length >= 8;
   };
 
-  // FUNCIÓN CORREGIDA CON VALIDACIÓN DE created_by
   const handleCreateUser = async () => {
     setError('');
     setCreating(true);
@@ -88,9 +100,9 @@ export function UsersModule() {
         return;
       }
 
-      // Verificar si el email ya existe
+      // Verificar si el email ya existe en user_profiles
       const { data: existingUser } = await supabase
-        .from('system_users')
+        .from('user_profiles')
         .select('email')
         .eq('email', newUser.email.trim())
         .maybeSingle();
@@ -101,40 +113,20 @@ export function UsersModule() {
         return;
       }
 
-      // 🔥 VERIFICAR SI EL USUARIO ACTUAL EXISTE EN system_users
-      let validCreatedBy = null;
-      if (user?.id) {
-        const { data: currentUserExists } = await supabase
-          .from('system_users')
-          .select('id')
-          .eq('id', user.id)
-          .maybeSingle();
-        
-        // Solo enviar created_by si el usuario existe en system_users
-        if (currentUserExists) {
-          validCreatedBy = user.id;
-          console.log('✅ Usuario actual encontrado en system_users:', user.id);
-        } else {
-          console.warn('⚠️ Usuario actual NO encontrado en system_users, creando sin created_by');
-        }
-      }
-
       console.log('📤 Enviando datos a Edge Function:', {
         email: newUser.email.trim(),
         full_name: newUser.full_name.trim(),
-        role: newUser.role,
-        has_created_by: !!validCreatedBy
+        role: newUser.role
       });
 
-      // 🔥 LLAMAR A LA EDGE FUNCTION CON created_by VALIDADO
+      // Llamar a la Edge Function
       const { data, error: functionError } = await supabase.functions.invoke('create-user', {
         body: {
           email: newUser.email.trim(),
           password: newUser.password,
           full_name: newUser.full_name.trim(),
           role: newUser.role,
-          phone: newUser.phone.trim() || null,
-          created_by: validCreatedBy // Solo envía si existe en system_users
+          phone: newUser.phone.trim() || null
         }
       });
 
@@ -145,7 +137,6 @@ export function UsersModule() {
         return;
       }
 
-      // Verificar si hay error en la respuesta de la función
       if (data?.error) {
         console.error('❌ Edge Function returned error:', data.error);
         setError(`Error: ${data.error}`);
@@ -175,11 +166,11 @@ export function UsersModule() {
     }
   };
 
-  const handleToggleStatus = async (userId: string, currentStatus: string) => {
-    const newActive = currentStatus === 'active' ? false : true;
+  const handleToggleStatus = async (userId: string, currentActive: boolean) => {
+    const newActive = !currentActive;
 
     const { error } = await supabase
-      .from('system_users')
+      .from('user_profiles')
       .update({
         active: newActive,
         updated_at: new Date().toISOString()
@@ -200,7 +191,7 @@ export function UsersModule() {
     if (!selectedUser) return;
 
     const { error } = await supabase
-      .from('system_users')
+      .from('user_profiles')
       .update({
         role: newRole,
         updated_at: new Date().toISOString()
@@ -230,8 +221,8 @@ export function UsersModule() {
       return;
     }
 
-    const { error } = await supabase
-      .from('system_users')
+    const { error} = await supabase
+      .from('user_profiles')
       .delete()
       .eq('id', userId);
 
@@ -245,9 +236,9 @@ export function UsersModule() {
     }
   };
 
-  const openRoleModal = (user: SystemUser) => {
-    setSelectedUser(user);
-    setNewRole(user.role as Role);
+  const openRoleModal = (userProfile: UserProfile) => {
+    setSelectedUser(userProfile);
+    setNewRole(userProfile.role as Role);
     setShowRoleModal(true);
   };
 
@@ -318,18 +309,18 @@ export function UsersModule() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {users.map((systemUser) => (
-                <tr key={systemUser.id} className="hover:bg-gray-50 transition-colors">
+              {users.map((userProfile) => (
+                <tr key={userProfile.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
                         <span className="text-blue-600 font-bold text-sm">
-                          {systemUser.full_name?.charAt(0).toUpperCase() || systemUser.email.charAt(0).toUpperCase()}
+                          {userProfile.full_name?.charAt(0).toUpperCase() || userProfile.email.charAt(0).toUpperCase()}
                         </span>
                       </div>
                       <div>
-                        <div className="font-semibold text-gray-800">{systemUser.full_name || 'Sin nombre'}</div>
-                        {systemUser.id === user?.id && (
+                        <div className="font-semibold text-gray-800">{userProfile.full_name || 'Sin nombre'}</div>
+                        {userProfile.id === user?.id && (
                           <span className="text-xs text-blue-600 font-semibold">(Tú)</span>
                         )}
                       </div>
@@ -338,20 +329,20 @@ export function UsersModule() {
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2 text-gray-700">
                       <Mail className="w-4 h-4 text-gray-400" />
-                      <span className="text-sm">{systemUser.email}</span>
+                      <span className="text-sm">{userProfile.email}</span>
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`inline-block px-3 py-1 text-xs font-bold rounded-full border-2 ${getRoleBadgeColor(systemUser.role as Role)}`}>
-                      {getRoleDisplayName(systemUser.role as Role)}
+                    <span className={`inline-block px-3 py-1 text-xs font-bold rounded-full border-2 ${getRoleBadgeColor(userProfile.role as Role)}`}>
+                      {getRoleDisplayName(userProfile.role as Role)}
                     </span>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2 text-gray-700">
-                      {systemUser.phone ? (
+                      {userProfile.phone ? (
                         <>
                           <Phone className="w-4 h-4 text-gray-400" />
-                          <span className="text-sm">{systemUser.phone}</span>
+                          <span className="text-sm">{userProfile.phone}</span>
                         </>
                       ) : (
                         <span className="text-sm text-gray-400">N/A</span>
@@ -360,15 +351,15 @@ export function UsersModule() {
                   </td>
                   <td className="px-6 py-4">
                     <button
-                      onClick={() => handleToggleStatus(systemUser.id, systemUser.active ? 'active' : 'inactive')}
-                      disabled={systemUser.id === user?.id}
+                      onClick={() => handleToggleStatus(userProfile.id, userProfile.active)}
+                      disabled={userProfile.id === user?.id}
                       className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg font-semibold text-sm transition-all ${
-                        systemUser.active
+                        userProfile.active
                           ? 'bg-green-100 text-green-800 hover:bg-green-200'
                           : 'bg-red-100 text-red-800 hover:bg-red-200'
-                      } ${systemUser.id === user?.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      } ${userProfile.id === user?.id ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                      {systemUser.active ? (
+                      {userProfile.active ? (
                         <>
                           <CheckCircle className="w-4 h-4" />
                           Activo
@@ -382,25 +373,25 @@ export function UsersModule() {
                     </button>
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">
-                    {new Date(systemUser.created_at).toLocaleDateString('es-MX')}
+                    {new Date(userProfile.created_at).toLocaleDateString('es-MX')}
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center justify-center gap-2">
                       <button
-                        onClick={() => openRoleModal(systemUser)}
-                        disabled={systemUser.id === user?.id}
+                        onClick={() => openRoleModal(userProfile)}
+                        disabled={userProfile.id === user?.id}
                         className={`p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors ${
-                          systemUser.id === user?.id ? 'opacity-50 cursor-not-allowed' : ''
+                          userProfile.id === user?.id ? 'opacity-50 cursor-not-allowed' : ''
                         }`}
                         title="Cambiar rol"
                       >
                         <Shield className="w-5 h-5" />
                       </button>
                       <button
-                        onClick={() => handleDeleteUser(systemUser.id, systemUser.full_name || systemUser.email)}
-                        disabled={systemUser.id === user?.id}
+                        onClick={() => handleDeleteUser(userProfile.id, userProfile.full_name || userProfile.email)}
+                        disabled={userProfile.id === user?.id}
                         className={`p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors ${
-                          systemUser.id === user?.id ? 'opacity-50 cursor-not-allowed' : ''
+                          userProfile.id === user?.id ? 'opacity-50 cursor-not-allowed' : ''
                         }`}
                         title="Eliminar usuario"
                       >
