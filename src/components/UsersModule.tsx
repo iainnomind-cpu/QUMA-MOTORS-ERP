@@ -8,7 +8,7 @@ export function UsersModule() {
   const { user } = useAuth();
   const [users, setUsers] = useState<SystemUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false); // NUEVO: estado para el spinner
+  const [creating, setCreating] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<SystemUser | null>(null);
@@ -51,10 +51,10 @@ export function UsersModule() {
     return password.length >= 8;
   };
 
-  // FUNCIÓN ACTUALIZADA CON EDGE FUNCTION
+  // FUNCIÓN CORREGIDA CON VALIDACIÓN DE created_by
   const handleCreateUser = async () => {
     setError('');
-    setCreating(true); // Activar spinner
+    setCreating(true);
 
     try {
       // Validaciones
@@ -101,7 +101,32 @@ export function UsersModule() {
         return;
       }
 
-      // 🔥 LLAMAR A LA EDGE FUNCTION 🔥
+      // 🔥 VERIFICAR SI EL USUARIO ACTUAL EXISTE EN system_users
+      let validCreatedBy = null;
+      if (user?.id) {
+        const { data: currentUserExists } = await supabase
+          .from('system_users')
+          .select('id')
+          .eq('id', user.id)
+          .maybeSingle();
+        
+        // Solo enviar created_by si el usuario existe en system_users
+        if (currentUserExists) {
+          validCreatedBy = user.id;
+          console.log('✅ Usuario actual encontrado en system_users:', user.id);
+        } else {
+          console.warn('⚠️ Usuario actual NO encontrado en system_users, creando sin created_by');
+        }
+      }
+
+      console.log('📤 Enviando datos a Edge Function:', {
+        email: newUser.email.trim(),
+        full_name: newUser.full_name.trim(),
+        role: newUser.role,
+        has_created_by: !!validCreatedBy
+      });
+
+      // 🔥 LLAMAR A LA EDGE FUNCTION CON created_by VALIDADO
       const { data, error: functionError } = await supabase.functions.invoke('create-user', {
         body: {
           email: newUser.email.trim(),
@@ -109,12 +134,12 @@ export function UsersModule() {
           full_name: newUser.full_name.trim(),
           role: newUser.role,
           phone: newUser.phone.trim() || null,
-          created_by: user?.id || null
+          created_by: validCreatedBy // Solo envía si existe en system_users
         }
       });
 
       if (functionError) {
-        console.error('Function error:', functionError);
+        console.error('❌ Function error:', functionError);
         setError(`Error al crear usuario: ${functionError.message}`);
         setCreating(false);
         return;
@@ -122,12 +147,14 @@ export function UsersModule() {
 
       // Verificar si hay error en la respuesta de la función
       if (data?.error) {
+        console.error('❌ Edge Function returned error:', data.error);
         setError(`Error: ${data.error}`);
         setCreating(false);
         return;
       }
 
       // Usuario creado exitosamente
+      console.log('✅ Usuario creado exitosamente:', data);
       setSuccess('Usuario creado exitosamente');
       setTimeout(() => setSuccess(''), 3000);
       setShowCreateModal(false);
@@ -141,10 +168,10 @@ export function UsersModule() {
       loadUsers();
 
     } catch (err: any) {
-      console.error('Error creating user:', err);
+      console.error('❌ Error inesperado creando usuario:', err);
       setError(`Error inesperado: ${err.message}`);
     } finally {
-      setCreating(false); // Desactivar spinner
+      setCreating(false);
     }
   };
 
@@ -445,7 +472,7 @@ export function UsersModule() {
         </div>
       </div>
 
-      {/* MODAL CREAR USUARIO - ACTUALIZADO CON SPINNER */}
+      {/* MODAL CREAR USUARIO */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => !creating && setShowCreateModal(false)}>
           <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full" onClick={(e) => e.stopPropagation()}>
@@ -605,6 +632,7 @@ export function UsersModule() {
         </div>
       )}
 
+      {/* MODAL CAMBIAR ROL */}
       {showRoleModal && selectedUser && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setShowRoleModal(false)}>
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
