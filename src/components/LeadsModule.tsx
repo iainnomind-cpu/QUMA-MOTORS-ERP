@@ -3,6 +3,8 @@ import { supabase, Lead, Client, SalesAgent, LeadInteraction, LeadFollowUp, Lead
 import { LeadScoringEngine } from '../lib/scoringEngine';
 import { useNotificationContext } from '../context/NotificationContext';
 import { createLeadNotification } from '../utils/notificationHelpers';
+import { useAuth } from '../contexts/AuthContext';
+import { canDeleteLead, canViewAllLeads, type Role } from '../utils/permissions';
 import {
   Users, Phone, Mail, Calendar, TrendingUp, MapPin, Briefcase, DollarSign, Clock, Star, X,
   Plus, Edit2, UserCheck, MessageSquare, Filter, Search, CheckCircle, History, UserPlus,
@@ -12,6 +14,7 @@ import {
 type ViewMode = 'leads' | 'clients' | 'detail' | 'create' | 'edit' | 'client-detail' | 'client-edit';
 
 export function LeadsModule() {
+  const { user } = useAuth();
   const [viewMode, setViewMode] = useState<ViewMode>('leads');
   const [leads, setLeads] = useState<Lead[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -110,10 +113,25 @@ export function LeadsModule() {
   };
 
   const loadLeads = async () => {
-    const { data, error } = await supabase
+    let query = supabase
       .from('leads')
-      .select('*')
-      .order('score', { ascending: false });
+      .select('*');
+
+    if (user?.role === 'vendedor') {
+      const { data: agentData } = await supabase
+        .from('sales_agents')
+        .select('id')
+        .eq('email', user.email)
+        .maybeSingle();
+
+      if (agentData) {
+        query = query.eq('assigned_agent_id', agentData.id);
+      } else {
+        query = query.eq('assigned_agent_id', 'none');
+      }
+    }
+
+    const { data, error } = await query.order('score', { ascending: false });
 
     if (!error && data) {
       setLeads(data);
@@ -1656,20 +1674,24 @@ export function LeadsModule() {
         <div className="flex items-center justify-between">
           <h2 className="text-3xl font-bold text-gray-800">Detalles del Lead</h2>
           <div className="flex gap-2">
-            <button
-              onClick={() => openEditLead(selectedLead)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-all"
-            >
-              <Edit2 className="w-4 h-4" />
-              Editar
-            </button>
-            <button
-              onClick={() => setShowDeleteModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-all"
-            >
-              <Trash2 className="w-4 h-4" />
-              Eliminar
-            </button>
+            {canDeleteLead(user?.role as Role) && (
+              <>
+                <button
+                  onClick={() => openEditLead(selectedLead)}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-all"
+                >
+                  <Edit2 className="w-4 h-4" />
+                  Editar
+                </button>
+                <button
+                  onClick={() => setShowDeleteModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-all"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Eliminar
+                </button>
+              </>
+            )}
             <button
               onClick={() => setViewMode('leads')}
               className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-semibold transition-all"

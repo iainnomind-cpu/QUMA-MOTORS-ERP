@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase, CatalogItem } from '../lib/supabase';
 import { PartsInventoryModule } from './PartsInventoryModule';
+import { useAuth } from '../contexts/AuthContext';
+import { canEditCatalog, type Role } from '../utils/permissions';
 import { Package, CheckCircle, XCircle, Plus, CreditCard as Edit2, Trash2, Eye, FileText, Bike, TrendingUp, DollarSign, Gauge, Palette, X, Search, Filter, Wrench, Upload, Image as ImageIcon } from 'lucide-react';
 
 type ViewMode = 'grid' | 'table';
@@ -8,6 +10,7 @@ type FilterSegment = 'all' | 'Deportiva' | 'Naked' | 'Doble Propósito' | 'Scoot
 type MainView = 'motorcycles' | 'parts';
 
 export function CatalogModule() {
+  const { user } = useAuth();
   const [mainView, setMainView] = useState<MainView>('motorcycles');
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -355,15 +358,17 @@ export function CatalogModule() {
             <PartsInventoryModule />
           ) : (
             <div className="space-y-6">
-              <div className="flex items-center justify-end">
-                <button
-                  onClick={() => handleOpenModal()}
-                  className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-semibold transition-all"
-                >
-                  <Plus className="w-5 h-5" />
-                  Registrar Modelo
-                </button>
-              </div>
+              {canEditCatalog(user?.role as Role) && (
+                <div className="flex items-center justify-end">
+                  <button
+                    onClick={() => handleOpenModal()}
+                    className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-semibold transition-all"
+                  >
+                    <Plus className="w-5 h-5" />
+                    Registrar Modelo
+                  </button>
+                </div>
+              )}
 
       {showSuccess && (
         <div className="bg-green-100 border-2 border-green-400 text-green-800 px-4 py-3 rounded-lg flex items-center gap-3">
@@ -558,19 +563,23 @@ export function CatalogModule() {
                       <Eye className="w-4 h-4" />
                       Ver
                     </button>
-                    <button
-                      onClick={() => handleOpenModal(item)}
-                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-semibold transition-all"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                      Editar
-                    </button>
-                    <button
-                      onClick={() => handleDelete(item.id)}
-                      className="flex items-center justify-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold transition-all"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {canEditCatalog(user?.role as Role) && (
+                      <>
+                        <button
+                          onClick={() => handleOpenModal(item)}
+                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-semibold transition-all"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                          Editar
+                        </button>
+                        <button
+                          onClick={() => handleDelete(item.id)}
+                          className="flex items-center justify-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold transition-all"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -635,18 +644,22 @@ export function CatalogModule() {
                         >
                           <Eye className="w-4 h-4" />
                         </button>
-                        <button
-                          onClick={() => handleOpenModal(item)}
-                          className="p-2 text-orange-600 hover:bg-orange-50 rounded transition-colors"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(item.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {canEditCatalog(user?.role as Role) && (
+                          <>
+                            <button
+                              onClick={() => handleOpenModal(item)}
+                              className="p-2 text-orange-600 hover:bg-orange-50 rounded transition-colors"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(item.id)}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
