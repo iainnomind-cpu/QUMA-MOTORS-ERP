@@ -586,7 +586,7 @@ export function LeadsModule() {
 
     const { error: leadError } = await supabase
       .from('leads')
-      .update({ assigned_agent_id: agentId })
+      .update({ assigned_agent_id: agentId, updated_at: new Date().toISOString() })
       .eq('id', selectedLead.id);
 
     const { error: assignmentError } = await supabase
@@ -599,9 +599,35 @@ export function LeadsModule() {
       }]);
 
     if (!leadError && !assignmentError) {
+      const { data: agentData } = await supabase
+        .from('sales_agents')
+        .select('total_leads_assigned, total_leads_converted')
+        .eq('id', agentId)
+        .single();
+
+      if (agentData) {
+        const newTotalLeadsAssigned = (agentData.total_leads_assigned || 0) + 1;
+        const conversionRate = newTotalLeadsAssigned > 0
+          ? ((agentData.total_leads_converted || 0) / newTotalLeadsAssigned) * 100
+          : 0;
+
+        await supabase
+          .from('sales_agents')
+          .update({
+            total_leads_assigned: newTotalLeadsAssigned,
+            conversion_rate: parseFloat(conversionRate.toFixed(2))
+          })
+          .eq('id', agentId);
+      }
+
+      setSelectedLead({ ...selectedLead, assigned_agent_id: agentId });
       setShowAssignModal(false);
-      loadLeads();
-      if (selectedLead) openLeadDetails(selectedLead);
+      await Promise.all([loadLeads(), loadAgents()]);
+
+      const updatedLead = leads.find(l => l.id === selectedLead.id);
+      if (updatedLead) {
+        openLeadDetails({ ...updatedLead, assigned_agent_id: agentId });
+      }
     }
   };
 
@@ -707,6 +733,29 @@ export function LeadsModule() {
           agent_id: null
         }]);
 
+      if (selectedLead.assigned_agent_id) {
+        const { data: agentData } = await supabase
+          .from('sales_agents')
+          .select('total_leads_assigned, total_leads_converted')
+          .eq('id', selectedLead.assigned_agent_id)
+          .single();
+
+        if (agentData) {
+          const newTotalLeadsConverted = (agentData.total_leads_converted || 0) + 1;
+          const conversionRate = (agentData.total_leads_assigned || 0) > 0
+            ? (newTotalLeadsConverted / (agentData.total_leads_assigned || 1)) * 100
+            : 0;
+
+          await supabase
+            .from('sales_agents')
+            .update({
+              total_leads_converted: newTotalLeadsConverted,
+              conversion_rate: parseFloat(conversionRate.toFixed(2))
+            })
+            .eq('id', selectedLead.assigned_agent_id);
+        }
+      }
+
       setShowConvertModal(false);
       setViewMode('leads');
       setSelectedLead(null);
@@ -716,8 +765,7 @@ export function LeadsModule() {
         purchase_price: '',
         purchase_notes: ''
       });
-      loadLeads();
-      loadClients();
+      await Promise.all([loadLeads(), loadClients(), loadAgents()]);
     }
   };
 
