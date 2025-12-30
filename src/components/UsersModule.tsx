@@ -176,18 +176,18 @@ export function UsersModule() {
   };
 
   const handleToggleStatus = async (userId: string, currentStatus: string) => {
-    const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+    const newActive = currentStatus === 'active' ? false : true;
 
     const { error } = await supabase
       .from('system_users')
       .update({
-        status: newStatus,
+        active: newActive,
         updated_at: new Date().toISOString()
       })
       .eq('id', userId);
 
     if (!error) {
-      setSuccess(`Usuario ${newStatus === 'active' ? 'activado' : 'desactivado'} exitosamente`);
+      setSuccess(`Usuario ${newActive ? 'activado' : 'desactivado'} exitosamente`);
       setTimeout(() => setSuccess(''), 3000);
       loadUsers();
     } else {
@@ -360,15 +360,15 @@ export function UsersModule() {
                   </td>
                   <td className="px-6 py-4">
                     <button
-                      onClick={() => handleToggleStatus(systemUser.id, systemUser.status)}
+                      onClick={() => handleToggleStatus(systemUser.id, systemUser.active ? 'active' : 'inactive')}
                       disabled={systemUser.id === user?.id}
                       className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg font-semibold text-sm transition-all ${
-                        systemUser.status === 'active'
+                        systemUser.active
                           ? 'bg-green-100 text-green-800 hover:bg-green-200'
                           : 'bg-red-100 text-red-800 hover:bg-red-200'
                       } ${systemUser.id === user?.id ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                      {systemUser.status === 'active' ? (
+                      {systemUser.active ? (
                         <>
                           <CheckCircle className="w-4 h-4" />
                           Activo
