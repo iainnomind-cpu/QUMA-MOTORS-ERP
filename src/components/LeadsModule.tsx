@@ -4,7 +4,7 @@ import { LeadScoringEngine } from '../lib/scoringEngine';
 import { useNotificationContext } from '../context/NotificationContext';
 import { createLeadNotification } from '../utils/notificationHelpers';
 import { useAuth } from '../contexts/AuthContext';
-import { canDeleteLead, canViewAllLeads, type Role } from '../utils/permissions';
+import { canDeleteLead, canViewAllLeads, canAssignLead, canDeleteClient, type Role } from '../utils/permissions';
 import {
   Users, Phone, Mail, Calendar, TrendingUp, MapPin, Briefcase, DollarSign, Clock, Star, X,
   Plus, Edit2, UserCheck, MessageSquare, Filter, Search, CheckCircle, History, UserPlus,
@@ -1091,13 +1091,15 @@ export function LeadsModule() {
               <Edit2 className="w-4 h-4" />
               Editar
             </button>
-            <button
-              onClick={() => setShowDeleteClientModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-all"
-            >
-              <Trash2 className="w-4 h-4" />
-              Eliminar
-            </button>
+            {canDeleteClient(user?.role as Role) && (
+              <button
+                onClick={() => setShowDeleteClientModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-all"
+              >
+                <Trash2 className="w-4 h-4" />
+                Eliminar
+              </button>
+            )}
             <button
               onClick={() => setViewMode('clients')}
               className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-semibold transition-all"
@@ -1772,12 +1774,14 @@ export function LeadsModule() {
                 <UserCheck className="w-5 h-5 text-blue-600" />
                 Asignación
               </h4>
-              <button
-                onClick={() => setShowAssignModal(true)}
-                className="text-sm text-blue-600 hover:text-blue-700 font-semibold"
-              >
-                {assignedAgent ? 'Reasignar' : 'Asignar'}
-              </button>
+              {canAssignLead(user?.role as Role) && (
+                <button
+                  onClick={() => setShowAssignModal(true)}
+                  className="text-sm text-blue-600 hover:text-blue-700 font-semibold"
+                >
+                  {assignedAgent ? 'Reasignar' : 'Asignar'}
+                </button>
+              )}
             </div>
             {assignedAgent ? (
               <div className="bg-blue-50 rounded-lg p-4 border-2 border-blue-200">

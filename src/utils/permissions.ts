@@ -14,6 +14,7 @@ const PERMISSIONS: Record<Role, string[]> = {
     'leads.assign',
     'clients.view',
     'clients.edit',
+    'clients.delete',
     'reports.view',
     'inventory.view',
     'inventory.edit',
@@ -92,6 +93,10 @@ export const canEditCatalog = (userRole: Role): boolean => {
 
 export const canManageUsers = (userRole: Role): boolean => {
   return userRole === 'admin';
+};
+
+export const canDeleteClient = (userRole: Role): boolean => {
+  return hasPermission(userRole, 'clients.delete');
 };
 
 export const getRoleBadgeColor = (role: Role): string => {
