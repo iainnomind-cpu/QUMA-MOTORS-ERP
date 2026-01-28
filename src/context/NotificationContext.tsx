@@ -52,7 +52,14 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [processedLeads, setProcessedLeads] = useState<Set<string>>(new Set());
   const [salesAgentId, setSalesAgentId] = useState<string | null>(null);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const { user } = useAuth();
+
+  // Función para obtener la key de localStorage según el usuario
+  const getStorageKey = () => {
+    if (!user?.id) return 'quma_notifications';
+    return `quma_notifications_${user.id}`;
+  };
 
   // Obtener el sales_agent_id del usuario autenticado usando su email
   useEffect(() => {
@@ -94,7 +101,126 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     fetchSalesAgentId();
   }, [user?.email]);
 
-  // Cargar notificaciones iniciales y limpiar expiradas
+  // Cargar historial de leads para admin al iniciar sesión
+  useEffect(() => {
+    if (!user || historyLoaded) return;
+
+    const loadLeadsHistory = async () => {
+      if (user.role === 'admin') {
+        console.log('📚 Admin detectado - Cargando historial de leads asignados...');
+        
+        try {
+          // Obtener leads creados en las últimas 24 horas con agente asignado
+          const twentyFourHoursAgo = new Date();
+          twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+
+          const { data: recentLeads, error } = await supabase
+            .from('leads')
+            .select(`
+              id,
+              name,
+              score,
+              status,
+              model_interested,
+              phone,
+              email,
+              timeframe,
+              origin,
+              financing_type,
+              assigned_agent_id,
+              created_at
+            `)
+            .not('assigned_agent_id', 'is', null)
+            .gte('created_at', twentyFourHoursAgo.toISOString())
+            .order('created_at', { ascending: false });
+
+          if (error) {
+            console.error('Error al cargar historial de leads:', error);
+            return;
+          }
+
+          if (recentLeads && recentLeads.length > 0) {
+            console.log(`📋 ${recentLeads.length} leads asignados encontrados en las últimas 24h`);
+
+            // Obtener información de todos los agentes
+            const agentIds = [...new Set(recentLeads.map(l => l.assigned_agent_id))];
+            const { data: agents } = await supabase
+              .from('sales_agents')
+              .select('id, name')
+              .in('id', agentIds);
+
+            const agentMap = new Map(agents?.map(a => [a.id, a.name]) || []);
+
+            // Crear notificaciones para cada lead
+            const historyNotifications: Notification[] = recentLeads.map(lead => {
+              const agentName = agentMap.get(lead.assigned_agent_id!) || 'Agente';
+              const detailedMessage = generateLeadNotificationMessage(lead);
+
+              return {
+                id: `hist_${lead.id}`,
+                type: 'new_lead_assigned',
+                title: `¡Nuevo Lead Asignado! 🚀 - ${agentName}`,
+                message: detailedMessage,
+                priority: lead.status === 'Verde' ? 'high' : lead.status === 'Amarillo' ? 'medium' : 'low',
+                category: 'lead' as const,
+                entity_type: 'lead',
+                entity_id: lead.id,
+                metadata: {
+                  lead_id: lead.id,
+                  lead_name: lead.name,
+                  agent_id: lead.assigned_agent_id,
+                  agent_name: agentName,
+                  score: lead.score,
+                  status: lead.status,
+                  model: lead.model_interested,
+                  phone: lead.phone,
+                  email: lead.email,
+                  timeframe: lead.timeframe,
+                  origin: lead.origin,
+                  financing_type: lead.financing_type
+                },
+                is_read: false,
+                created_at: lead.created_at
+              };
+            });
+
+            // Cargar notificaciones existentes del localStorage
+            const existingNotifications = loadNotifications(false);
+            
+            // Combinar historial con notificaciones existentes (evitar duplicados)
+            const existingIds = new Set(existingNotifications.map(n => n.entity_id));
+            const newHistoryNotifications = historyNotifications.filter(
+              n => !existingIds.has(n.entity_id)
+            );
+
+            if (newHistoryNotifications.length > 0) {
+              console.log(`✅ Agregando ${newHistoryNotifications.length} notificaciones de historial`);
+              const combined = [...newHistoryNotifications, ...existingNotifications];
+              saveNotifications(combined);
+            } else {
+              console.log('ℹ️ Todas las notificaciones de historial ya existen');
+            }
+
+            // Marcar todos los leads como procesados
+            const leadIds = recentLeads.map(l => l.id);
+            setProcessedLeads(new Set(leadIds));
+          } else {
+            console.log('ℹ️ No hay leads asignados en las últimas 24h');
+          }
+        } catch (error) {
+          console.error('Error al cargar historial:', error);
+        } finally {
+          setHistoryLoaded(true);
+        }
+      } else {
+        setHistoryLoaded(true);
+      }
+    };
+
+    loadLeadsHistory();
+  }, [user?.id, user?.role, historyLoaded]);
+
+  // Cargar notificaciones iniciales del localStorage
   useEffect(() => {
     loadNotifications();
     
@@ -104,7 +230,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }, 30000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [user?.id]);
 
   // Suscripción a cambios en tiempo real en la tabla leads
   useEffect(() => {
@@ -225,8 +351,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     };
   }, [processedLeads, user?.email, user?.role, salesAgentId]);
 
-  const loadNotifications = () => {
-    const stored = localStorage.getItem('quma_notifications');
+  const loadNotifications = (updateState = true) => {
+    const storageKey = getStorageKey();
+    const stored = localStorage.getItem(storageKey);
+    
     if (stored) {
       try {
         const parsedNotifications: Notification[] = JSON.parse(stored);
@@ -236,20 +364,37 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           }
           return true;
         });
-        setNotifications(validNotifications.sort((a, b) =>
+        
+        const sortedNotifications = validNotifications.sort((a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        ));
+        );
+
+        if (updateState) {
+          setNotifications(sortedNotifications);
+        }
+        
+        return sortedNotifications;
       } catch (error) {
         console.error('Error al cargar notificaciones:', error);
-        setNotifications([]);
+        if (updateState) {
+          setNotifications([]);
+        }
+        return [];
       }
     }
+    
+    if (updateState) {
+      setNotifications([]);
+    }
+    return [];
   };
 
   const saveNotifications = (updatedNotifications: Notification[]) => {
     try {
-      localStorage.setItem('quma_notifications', JSON.stringify(updatedNotifications));
+      const storageKey = getStorageKey();
+      localStorage.setItem(storageKey, JSON.stringify(updatedNotifications));
       setNotifications(updatedNotifications);
+      console.log(`💾 Guardadas ${updatedNotifications.length} notificaciones en ${storageKey}`);
     } catch (error) {
       console.error('Error al guardar notificaciones:', error);
     }
@@ -263,10 +408,12 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       created_at: new Date().toISOString()
     };
 
+    // Agregar al inicio del array (más reciente primero)
     const updated = [newNotification, ...notifications];
     saveNotifications(updated);
     
     console.log('✅ Notificación agregada exitosamente:', newNotification.title);
+    console.log(`📊 Total de notificaciones: ${updated.length}`);
   };
 
   const markAsRead = (id: string) => {
