@@ -51,7 +51,48 @@ ${suggestedAction}`;
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [processedLeads, setProcessedLeads] = useState<Set<string>>(new Set());
+  const [salesAgentId, setSalesAgentId] = useState<string | null>(null);
   const { user } = useAuth();
+
+  // Obtener el sales_agent_id del usuario autenticado usando su email
+  useEffect(() => {
+    if (!user?.email) {
+      setSalesAgentId(null);
+      return;
+    }
+
+    const fetchSalesAgentId = async () => {
+      try {
+        console.log('🔍 Buscando sales_agent por email:', user.email);
+        
+        const { data, error } = await supabase
+          .from('sales_agents')
+          .select('id, name, email')
+          .eq('email', user.email)
+          .eq('status', 'active')
+          .single();
+
+        if (error) {
+          console.error('Error al buscar sales_agent:', error);
+          setSalesAgentId(null);
+          return;
+        }
+
+        if (data) {
+          console.log('✅ Sales Agent encontrado:', data.id, '-', data.name);
+          setSalesAgentId(data.id);
+        } else {
+          console.log('⚠️ No se encontró sales_agent para este email');
+          setSalesAgentId(null);
+        }
+      } catch (error) {
+        console.error('Error al obtener sales_agent_id:', error);
+        setSalesAgentId(null);
+      }
+    };
+
+    fetchSalesAgentId();
+  }, [user?.email]);
 
   // Cargar notificaciones iniciales y limpiar expiradas
   useEffect(() => {
@@ -67,13 +108,14 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   // Suscripción a cambios en tiempo real en la tabla leads
   useEffect(() => {
-    if (!user?.id) {
+    if (!user?.email) {
       console.log('⚠️ No hay usuario autenticado, no se puede suscribir a notificaciones');
       return;
     }
 
     console.log('🔔 Iniciando suscripción a notificaciones en tiempo real...');
-    console.log('👤 Usuario actual:', user.id, '- Rol:', user.role);
+    console.log('👤 Usuario:', user.email, '- Rol:', user.role);
+    console.log('🆔 Sales Agent ID:', salesAgentId);
     
     const channel = supabase
       .channel('leads-notifications')
@@ -85,7 +127,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           table: 'leads'
         },
         async (payload) => {
-          console.log('✅ Evento detectado en leads:', payload.eventType, payload);
+          console.log('✅ Evento detectado en leads:', payload.eventType);
           
           const lead = payload.new;
           const leadId = lead.id;
@@ -93,20 +135,20 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           // Solo procesar si tiene agente asignado y no lo hemos procesado antes
           if (lead.assigned_agent_id && !processedLeads.has(leadId)) {
             console.log('📢 Lead con agente asignado detectado:', leadId);
-            console.log('🔍 Agente asignado:', lead.assigned_agent_id);
-            console.log('🔍 Usuario actual:', user.id);
-            console.log('🔍 Rol usuario:', user.role);
+            console.log('🔍 Agente asignado al lead:', lead.assigned_agent_id);
+            console.log('🔍 Sales Agent ID del usuario:', salesAgentId);
+            console.log('🔍 Rol del usuario:', user.role);
             
             // Verificar si el lead es para este usuario
             const isAdmin = user.role === 'admin';
-            const isAssignedToCurrentUser = lead.assigned_agent_id === user.id;
+            const isAssignedToCurrentUser = salesAgentId && lead.assigned_agent_id === salesAgentId;
 
             console.log('✓ Es admin?', isAdmin);
             console.log('✓ Asignado a usuario actual?', isAssignedToCurrentUser);
 
             // Solo mostrar notificación si:
             // 1. El usuario es admin (ve todos los leads)
-            // 2. O el lead está asignado a este usuario
+            // 2. O el lead está asignado al sales_agent de este usuario
             if (isAdmin || isAssignedToCurrentUser) {
               console.log('✅ Notificación PERMITIDA para este usuario');
               
@@ -162,6 +204,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
               }
             } else {
               console.log('🚫 Notificación BLOQUEADA - Lead no asignado a este usuario');
+              console.log('   - Lead asignado a:', lead.assigned_agent_id);
+              console.log('   - Usuario es sales_agent:', salesAgentId);
+              console.log('   - Coinciden?', lead.assigned_agent_id === salesAgentId);
             }
           } else if (!lead.assigned_agent_id) {
             console.log('⚠️ Lead sin agente asignado (aún), esperando UPDATE...');
@@ -178,7 +223,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       console.log('🔌 Desconectando suscripción de notificaciones...');
       supabase.removeChannel(channel);
     };
-  }, [processedLeads, user?.id, user?.role]);
+  }, [processedLeads, user?.email, user?.role, salesAgentId]);
 
   const loadNotifications = () => {
     const stored = localStorage.getItem('quma_notifications');
