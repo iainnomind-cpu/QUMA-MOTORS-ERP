@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase, Lead, CatalogItem } from '../lib/supabase';
 import { TrendingUp, Users, DollarSign, Target, Activity, Award, Calendar, MessageSquare } from 'lucide-react';
 import { useNotificationContext } from '../context/NotificationContext';
-import { createBirthdayNotification } from '../utils/notificationhelpers';
+import { createBirthdayNotification } from '../utils/notificationHelpers';
 
 export function Dashboard() {
   const { addNotification } = useNotificationContext();
