@@ -15,6 +15,7 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [processedLeads, setProcessedLeads] = useState<Set<string>>(new Set());
 
   // Cargar notificaciones iniciales y limpiar expiradas
   useEffect(() => {
@@ -37,58 +38,69 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*', // Escuchar INSERT y UPDATE
           schema: 'public',
           table: 'leads'
         },
         async (payload) => {
-          console.log('✅ Nuevo lead detectado:', payload);
-          const newLead = payload.new;
+          console.log('✅ Evento detectado en leads:', payload.eventType, payload);
           
-          // Solo crear notificación si el lead tiene agente asignado
-          if (newLead.assigned_agent_id) {
+          const lead = payload.new;
+          const leadId = lead.id;
+
+          // Solo procesar si tiene agente asignado y no lo hemos procesado antes
+          if (lead.assigned_agent_id && !processedLeads.has(leadId)) {
+            console.log('📢 Lead con agente asignado detectado:', leadId);
+            
+            // Marcar como procesado
+            setProcessedLeads(prev => new Set(prev).add(leadId));
+            
             try {
               // Obtener información del agente
               const { data: agent, error: agentError } = await supabase
                 .from('sales_agents')
                 .select('name, email')
-                .eq('id', newLead.assigned_agent_id)
+                .eq('id', lead.assigned_agent_id)
                 .single();
 
               if (agentError) {
                 console.error('Error al obtener agente:', agentError);
               }
 
+              const agentName = agent?.name || 'un agente';
+
               // Crear notificación
               const notification: Omit<Notification, 'id' | 'is_read' | 'created_at'> = {
                 type: 'new_lead_assigned',
                 title: '🎯 Nuevo Lead Asignado',
-                message: `Lead "${newLead.name}" ha sido asignado a ${agent?.name || 'un agente'}. Score: ${newLead.score}/100 (${newLead.status})`,
-                priority: newLead.status === 'Verde' ? 'high' : newLead.status === 'Amarillo' ? 'medium' : 'low',
+                message: `Lead "${lead.name}" ha sido asignado a ${agentName}. Score: ${lead.score}/100 (${lead.status})`,
+                priority: lead.status === 'Verde' ? 'high' : lead.status === 'Amarillo' ? 'medium' : 'low',
                 category: 'lead',
                 entity_type: 'lead',
-                entity_id: newLead.id,
+                entity_id: leadId,
                 metadata: {
-                  lead_id: newLead.id,
-                  lead_name: newLead.name,
-                  agent_id: newLead.assigned_agent_id,
-                  agent_name: agent?.name || 'Agente',
-                  score: newLead.score,
-                  status: newLead.status,
-                  model: newLead.model_interested,
-                  phone: newLead.phone,
-                  timeframe: newLead.timeframe,
-                  origin: newLead.origin
+                  lead_id: leadId,
+                  lead_name: lead.name,
+                  agent_id: lead.assigned_agent_id,
+                  agent_name: agentName,
+                  score: lead.score,
+                  status: lead.status,
+                  model: lead.model_interested,
+                  phone: lead.phone,
+                  timeframe: lead.timeframe,
+                  origin: lead.origin
                 }
               };
 
-              console.log('📢 Creando notificación:', notification);
+              console.log('📬 Creando notificación:', notification.title);
               addNotification(notification);
             } catch (error) {
               console.error('Error al procesar notificación de lead:', error);
             }
+          } else if (!lead.assigned_agent_id) {
+            console.log('⚠️ Lead sin agente asignado (aún), esperando UPDATE...');
           } else {
-            console.log('⚠️ Lead sin agente asignado, no se crea notificación');
+            console.log('ℹ️ Lead ya procesado:', leadId);
           }
         }
       )
@@ -100,7 +112,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       console.log('🔌 Desconectando suscripción de notificaciones...');
       supabase.removeChannel(channel);
     };
-  }, []); // Solo se ejecuta una vez al montar
+  }, [processedLeads]); // Agregar processedLeads como dependencia
 
   const loadNotifications = () => {
     const stored = localStorage.getItem('quma_notifications');
@@ -143,7 +155,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     const updated = [newNotification, ...notifications];
     saveNotifications(updated);
     
-    console.log('✅ Notificación agregada:', newNotification.title);
+    console.log('✅ Notificación agregada exitosamente:', newNotification.title);
   };
 
   const markAsRead = (id: string) => {
