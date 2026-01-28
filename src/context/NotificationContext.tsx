@@ -1,7 +1,7 @@
 import { createContext, useContext, ReactNode, useState, useEffect } from 'react';
 import type { Notification } from '../components/NotificationCenter';
 import { supabase } from '../lib/supabase';
-import { useAuth } from './AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 
 interface NotificationContextType {
   notifications: Notification[];
