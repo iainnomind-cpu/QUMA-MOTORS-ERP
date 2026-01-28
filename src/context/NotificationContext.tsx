@@ -13,6 +13,40 @@ interface NotificationContextType {
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
+// Función helper para generar el mensaje de notificación
+function generateLeadNotificationMessage(lead: any): string {
+  const statusEmoji = {
+    'Verde': '🟢',
+    'Amarillo': '🟡',
+    'Rojo': '🔴'
+  }[lead.status] || '⚪';
+
+  const priorityText = {
+    'Verde': 'Prioridad Alta',
+    'Amarillo': 'Prioridad Media',
+    'Rojo': 'Prioridad Baja'
+  }[lead.status] || 'Prioridad Normal';
+
+  const timeframeText = lead.timeframe ? `, Timeframe: ${lead.timeframe}` : '';
+  const modelText = lead.model_interested || 'No especificado';
+  const contactInfo = lead.phone || lead.email || 'Sin contacto';
+  
+  // Acción sugerida según el status
+  const suggestedAction = {
+    'Verde': '🎯 Contactar de inmediato para mantener el interés alto y agendar cita.',
+    'Amarillo': '📞 Realizar seguimiento pronto para identificar objeciones y convertir.',
+    'Rojo': '📧 Nutrir con información del modelo de interés y beneficios de financiamiento.'
+  }[lead.status] || 'Realizar seguimiento según disponibilidad.';
+
+  return `👤 Nombre: ${lead.name}
+📊 Calificación: ${lead.score}/100 (${priorityText} ${statusEmoji})
+🏍️ Interés: ${modelText}${timeframeText}
+📱 Contacto: ${contactInfo}
+💡 Origen: ${lead.origin || 'No especificado'}
+
+${suggestedAction}`;
+}
+
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [processedLeads, setProcessedLeads] = useState<Set<string>>(new Set());
@@ -69,11 +103,14 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
               const agentName = agent?.name || 'un agente';
 
+              // Generar mensaje detallado
+              const detailedMessage = generateLeadNotificationMessage(lead);
+
               // Crear notificación
               const notification: Omit<Notification, 'id' | 'is_read' | 'created_at'> = {
                 type: 'new_lead_assigned',
-                title: '🎯 Nuevo Lead Asignado',
-                message: `Lead "${lead.name}" ha sido asignado a ${agentName}. Score: ${lead.score}/100 (${lead.status})`,
+                title: `¡Nuevo Lead Asignado! 🚀 - ${agentName}`,
+                message: detailedMessage,
                 priority: lead.status === 'Verde' ? 'high' : lead.status === 'Amarillo' ? 'medium' : 'low',
                 category: 'lead',
                 entity_type: 'lead',
@@ -87,8 +124,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
                   status: lead.status,
                   model: lead.model_interested,
                   phone: lead.phone,
+                  email: lead.email,
                   timeframe: lead.timeframe,
-                  origin: lead.origin
+                  origin: lead.origin,
+                  financing_type: lead.financing_type
                 }
               };
 
@@ -112,7 +151,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       console.log('🔌 Desconectando suscripción de notificaciones...');
       supabase.removeChannel(channel);
     };
-  }, [processedLeads]); // Agregar processedLeads como dependencia
+  }, [processedLeads]);
 
   const loadNotifications = () => {
     const stored = localStorage.getItem('quma_notifications');
