@@ -4,6 +4,8 @@ import { PartsInventoryModule } from './PartsInventoryModule';
 import { useAuth } from '../contexts/AuthContext';
 import { canEditCatalog, type Role } from '../utils/permissions';
 import { Package, CheckCircle, XCircle, Plus, CreditCard as Edit2, Trash2, Eye, FileText, Bike, TrendingUp, DollarSign, Gauge, Palette, X, Search, Filter, Wrench, Upload, Image as ImageIcon } from 'lucide-react';
+import { useNotificationContext } from '../context/NotificationContext';
+import { createLowStockNotification, createOutOfStockNotification } from '../utils/notificationHelpers';
 
 type ViewMode = 'grid' | 'table';
 type FilterSegment = 'all' | 'Deportiva' | 'Naked' | 'Doble Propósito' | 'Scooter' | 'Trabajo' | 'Street' | 'Cross/Country' | 'Carros' | 'Cuatrimoto/ATV: Deportivas' | 'Cuatrimoto/ATV: Utilitarios' | 'Nuevos lanzamientos';
@@ -11,6 +13,7 @@ type MainView = 'motorcycles' | 'parts';
 
 export function CatalogModule() {
   const { user } = useAuth();
+  const { addNotification } = useNotificationContext();
   const [mainView, setMainView] = useState<MainView>('motorcycles');
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,6 +60,34 @@ export function CatalogModule() {
     loadCatalog();
   }, []);
 
+  useEffect(() => {
+    const checkLowStock = async () => {
+      const { data: lowStockItems } = await supabase
+        .from('catalog')
+        .select('*')
+        .lte('stock', 2)
+        .eq('active', true);
+
+      lowStockItems?.forEach(item => {
+        const notification = createLowStockNotification({
+          id: item.id,
+          model: item.model,
+          stock: item.stock,
+          segment: item.segment,
+          price: item.price_cash
+        });
+
+        if (notification) {
+          addNotification(notification);
+        }
+      });
+    };
+
+    const interval = setInterval(checkLowStock, 1800000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   const loadCatalog = async () => {
     const { data, error } = await supabase
       .from('catalog')
@@ -65,6 +96,22 @@ export function CatalogModule() {
 
     if (!error && data) {
       setCatalog(data);
+
+      data?.forEach(item => {
+        if (item.stock <= 2 && item.active) {
+          const notification = createLowStockNotification({
+            id: item.id,
+            model: item.model,
+            stock: item.stock,
+            segment: item.segment,
+            price: item.price_cash
+          });
+
+          if (notification) {
+            addNotification(notification);
+          }
+        }
+      });
     }
     setLoading(false);
   };
@@ -241,6 +288,24 @@ export function CatalogModule() {
         .eq('id', editingItem.id);
 
       if (!error) {
+        if (dataToSubmit.stock === 0) {
+          const { data: item } = await supabase
+            .from('catalog')
+            .select('id, model, segment')
+            .eq('id', editingItem.id)
+            .single();
+
+          if (item) {
+            const notification = createOutOfStockNotification({
+              id: item.id,
+              model: item.model,
+              segment: item.segment
+            });
+
+            addNotification(notification);
+          }
+        }
+
         setSuccessMessage('Modelo actualizado exitosamente');
         setShowSuccess(true);
         setTimeout(() => setShowSuccess(false), 3000);

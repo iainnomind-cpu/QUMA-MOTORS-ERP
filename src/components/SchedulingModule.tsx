@@ -2,6 +2,11 @@ import { useState, useEffect } from 'react';
 import { supabase, TestDriveAppointment, ServiceAppointment, ServiceTechnician, ServiceHistory, ServiceReminder, CatalogItem, Lead, Client } from '../lib/supabase';
 import { useNotificationContext } from '../context/NotificationContext';
 import {
+  createTestDriveScheduledNotification,
+  createServiceScheduledNotification,
+  createAppointmentReminderNotification
+} from '../utils/notificationHelpers';
+import {
   Calendar, Clock, CheckCircle, XCircle, Wrench, Car, User, Phone, Mail, Plus, Edit2, Eye, X,
   MapPin, FileText, TrendingUp, AlertCircle, Filter, Bell, Activity, Award, Bike, Trash2
 } from 'lucide-react';
@@ -86,6 +91,59 @@ export function SchedulingModule() {
       testDriveSubscription.unsubscribe();
       leadSubscription.unsubscribe();
     };
+  }, []);
+
+  useEffect(() => {
+    const checkUpcomingAppointments = async () => {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStart = new Date(tomorrow.setHours(0, 0, 0, 0)).toISOString();
+      const tomorrowEnd = new Date(tomorrow.setHours(23, 59, 59, 999)).toISOString();
+
+      const { data: testDrives } = await supabase
+        .from('test_drive_appointments')
+        .select('*')
+        .eq('status', 'scheduled')
+        .gte('appointment_date', tomorrowStart)
+        .lte('appointment_date', tomorrowEnd);
+
+      testDrives?.forEach(appointment => {
+        const notification = createAppointmentReminderNotification({
+          id: appointment.id,
+          type: 'test_drive',
+          clientName: appointment.lead_name,
+          details: `${appointment.catalog_model} - ${appointment.pickup_location}`,
+          date: appointment.appointment_date
+        });
+
+        addNotification(notification);
+      });
+
+      const { data: services } = await supabase
+        .from('service_appointments')
+        .select('*')
+        .eq('status', 'scheduled')
+        .gte('appointment_date', tomorrowStart)
+        .lte('appointment_date', tomorrowEnd);
+
+      services?.forEach(appointment => {
+        const notification = createAppointmentReminderNotification({
+          id: appointment.id,
+          type: 'service',
+          clientName: appointment.client_name,
+          details: `${appointment.service_type} - ${appointment.vehicle_model || ''}`,
+          date: appointment.appointment_date
+        });
+
+        addNotification(notification);
+      });
+    };
+
+    checkUpcomingAppointments();
+
+    const interval = setInterval(checkUpcomingAppointments, 3600000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const loadAllData = async () => {
@@ -231,11 +289,13 @@ export function SchedulingModule() {
       status: 'scheduled'
     };
 
-    const { error } = await supabase
+    const { data: newAppointment, error } = await supabase
       .from('test_drive_appointments')
-      .insert([appointmentData]);
+      .insert([appointmentData])
+      .select()
+      .single();
 
-    if (!error) {
+    if (!error && newAppointment) {
       await supabase
         .from('leads')
         .update({
@@ -249,19 +309,15 @@ export function SchedulingModule() {
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
 
-      addNotification({
-        type: 'test_drive_scheduled',
-        title: 'Prueba de Manejo Agendada',
-        message: `Nueva prueba de manejo: ${selectedLead.name} - ${newTestDrive.catalog_model} el ${new Date(newTestDrive.appointment_date).toLocaleString('es-MX')}`,
-        priority: 'medium',
-        category: 'appointment',
-        entity_type: 'test_drive',
-        metadata: {
-          lead_name: selectedLead.name,
-          model: newTestDrive.catalog_model,
-          date: newTestDrive.appointment_date
-        }
+      const notification = createTestDriveScheduledNotification({
+        id: newAppointment.id,
+        leadName: newAppointment.lead_name,
+        model: newAppointment.catalog_model,
+        date: newAppointment.appointment_date,
+        location: newAppointment.pickup_location
       });
+
+      addNotification(notification);
 
       setShowTestDriveModal(false);
       setNewTestDrive({ lead_id: '', catalog_model: '', appointment_date: '', duration_minutes: 30, pickup_location: 'agencia', notes: '' });
@@ -296,29 +352,26 @@ export function SchedulingModule() {
       status: 'scheduled'
     };
 
-    const { error } = await supabase
+    const { data: newServiceAppointment, error } = await supabase
       .from('service_appointments')
-      .insert([appointmentData]);
+      .insert([appointmentData])
+      .select()
+      .single();
 
-    if (!error) {
+    if (!error && newServiceAppointment) {
       setSuccessMessage('Cita de servicio agendada exitosamente');
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
 
-      addNotification({
-        type: 'service_scheduled',
-        title: 'Servicio Técnico Agendado',
-        message: `Nuevo servicio: ${selectedClient.name} - ${newService.service_type} el ${new Date(newService.appointment_date).toLocaleString('es-MX')}`,
-        priority: 'medium',
-        category: 'service',
-        entity_type: 'service_appointment',
-        metadata: {
-          client_name: selectedClient.name,
-          service_type: newService.service_type,
-          technician: selectedTechnician.name,
-          date: newService.appointment_date
-        }
+      const notification = createServiceScheduledNotification({
+        id: newServiceAppointment.id,
+        clientName: newServiceAppointment.client_name,
+        serviceType: newServiceAppointment.service_type,
+        date: newServiceAppointment.appointment_date,
+        technician: newServiceAppointment.technician_name
       });
+
+      addNotification(notification);
 
       setShowServiceModal(false);
       setNewService({ client_id: '', technician_id: '', appointment_date: '', service_type: 'preventivo', estimated_duration_minutes: 120, vehicle_model: '', vehicle_plate: '', mileage: '', services_requested: '', notes: '' });

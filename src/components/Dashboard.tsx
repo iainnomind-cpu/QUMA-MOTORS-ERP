@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
 import { supabase, Lead, CatalogItem } from '../lib/supabase';
 import { TrendingUp, Users, DollarSign, Target, Activity, Award, Calendar, MessageSquare } from 'lucide-react';
+import { useNotificationContext } from '../context/NotificationContext';
+import { createBirthdayNotification } from '../utils/notificationhelpers';
 
 export function Dashboard() {
+  const { addNotification } = useNotificationContext();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [stats, setStats] = useState({
@@ -21,6 +24,52 @@ export function Dashboard() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    const checkBirthdays = async () => {
+      const today = new Date();
+      const todayMonth = today.getMonth() + 1;
+      const todayDay = today.getDate();
+
+      const { data: clients } = await supabase
+        .from('clients')
+        .select('id, name, phone, birthday, last_purchase_date')
+        .not('birthday', 'is', null);
+
+      if (clients) {
+        const birthdayClients = clients.filter(client => {
+          if (!client.birthday) return false;
+
+          const birthday = new Date(client.birthday);
+          const birthMonth = birthday.getMonth() + 1;
+          const birthDay = birthday.getDate();
+
+          return birthMonth === todayMonth && birthDay === todayDay;
+        });
+
+        birthdayClients.forEach(client => {
+          const notification = createBirthdayNotification({
+            id: client.id,
+            name: client.name,
+            phone: client.phone,
+            lastPurchase: client.last_purchase_date
+          });
+
+          addNotification(notification);
+        });
+
+        if (birthdayClients.length > 0) {
+          console.log(`${birthdayClients.length} clientes cumplen años hoy`);
+        }
+      }
+    };
+
+    checkBirthdays();
+
+    const interval = setInterval(checkBirthdays, 21600000);
+
+    return () => clearInterval(interval);
+  }, [addNotification]);
 
   const loadData = async () => {
     const { data: leadsData } = await supabase
@@ -298,7 +347,7 @@ export function Dashboard() {
         </div>
       </div>
 
-      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl shadow-md p-6 border-2 border-blue-200">
+      <div className="bg-gradient-to-br from-blue-50 to-sky-50 rounded-xl shadow-md p-6 border-2 border-blue-200">
         <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
           <TrendingUp className="w-5 h-5 text-blue-600" />
           Insights Clave

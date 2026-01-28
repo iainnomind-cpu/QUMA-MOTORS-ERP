@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase, Lead, Client, SalesAgent, LeadInteraction, LeadFollowUp, LeadAttachment } from '../lib/supabase';
 import { LeadScoringEngine } from '../lib/scoringEngine';
 import { useNotificationContext } from '../context/NotificationContext';
-import { createLeadNotification } from '../utils/notificationHelpers';
+import { createLeadNotification, createGreenLeadNotification, createLowScoreNotification, createFollowUpNotification } from '../utils/notificationHelpers';
 import { useAuth } from '../contexts/AuthContext';
 import { canDeleteLead, canViewAllLeads, canAssignLead, canDeleteClient, type Role } from '../utils/permissions';
 import {
@@ -106,6 +106,39 @@ export function LeadsModule() {
   useEffect(() => {
     filterClients();
   }, [clients, searchTerm, statusFilter]);
+
+  useEffect(() => {
+    const checkTodayFollowUps = async () => {
+      const today = new Date().toISOString().split('T')[0];
+
+      const { data: followUps } = await supabase
+        .from('lead_follow_ups')
+        .select(`
+          lead_id,
+          follow_up_date,
+          leads!inner (
+            name
+          )
+        `)
+        .eq('status', 'pending')
+        .gte('follow_up_date', today + 'T00:00:00')
+        .lte('follow_up_date', today + 'T23:59:59');
+
+      if (followUps && followUps.length > 0) {
+        followUps.forEach(followUp => {
+          const notification = createFollowUpNotification({
+            id: followUp.lead_id,
+            name: followUp.leads.name,
+            dueDate: followUp.follow_up_date
+          });
+
+          addNotification(notification);
+        });
+      }
+    };
+
+    checkTodayFollowUps();
+  }, []);
 
   const loadAllData = async () => {
     await Promise.all([loadLeads(), loadClients(), loadAgents()]);
@@ -412,6 +445,26 @@ export function LeadsModule() {
       .eq('id', selectedLead.id);
 
     if (!error) {
+      const { data: updatedLead } = await supabase
+        .from('leads')
+        .select('id, name, score, status, phone, model_interested, timeframe, origin')
+        .eq('id', selectedLead.id)
+        .maybeSingle();
+
+      if (updatedLead && updatedLead.status === 'Verde') {
+        const notification = createGreenLeadNotification(updatedLead);
+        if (notification) {
+          addNotification(notification);
+        }
+      }
+
+      if (updatedLead && updatedLead.score < 50) {
+        const notification = createLowScoreNotification(updatedLead);
+        if (notification) {
+          addNotification(notification);
+        }
+      }
+
       const { data: existingAppointments } = await supabase
         .from('test_drive_appointments')
         .select('*')

@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
 import { supabase, CatalogItem, FinancingRule, FinancingCampaign } from '../lib/supabase';
 import { Calculator, AlertCircle, TrendingUp, DollarSign, Calendar, Percent, Settings, Plus, Edit2, Trash2, CheckCircle, X } from 'lucide-react';
+import { useNotificationContext } from '../context/NotificationContext';
+import { createFinancingApprovedNotification } from '../utils/notificationHelpers';
 
 type ViewMode = 'simulator' | 'rules' | 'campaigns';
 
 export function FinanceSimulator() {
+  const { addNotification } = useNotificationContext();
   const [viewMode, setViewMode] = useState<ViewMode>('simulator');
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [financingRules, setFinancingRules] = useState<FinancingRule[]>([]);
@@ -181,7 +184,7 @@ export function FinanceSimulator() {
     const totalAmount = downPayment + (monthlyPayment * term);
     const interestAmount = totalAmount - model.price_cash;
 
-    await supabase
+    const { error } = await supabase
       .from('financing_calculations_log')
       .insert({
         model: selectedModel,
@@ -195,6 +198,18 @@ export function FinanceSimulator() {
         interest_amount: interestAmount,
         calculation_source: 'simulator'
       });
+
+    if (!error) {
+      const notification = createFinancingApprovedNotification({
+        id: `fin_${Date.now()}`,
+        clientName: 'Cliente Simulado',
+        amount: totalAmount,
+        term: term,
+        model: selectedModel
+      });
+
+      addNotification(notification);
+    }
   };
 
   const handleCreateRule = async () => {
