@@ -34,6 +34,8 @@ interface CreateLeadResponse {
     name: string;
     score: number;
     status: string;
+    assigned_agent_id?: string | null;
+    assigned_agent_name?: string | null;
   };
   error?: string;
   message?: string;
@@ -195,6 +197,60 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
       };
     }
 
+    // ===== ASIGNACIÓN AUTOMÁTICA ROUND ROBIN =====
+    let assignedAgent = null;
+
+    try {
+      // Obtener agentes activos ordenados por total_leads_assigned (ascendente)
+      const { data: activeAgents, error: agentsError } = await supabase
+        .from('sales_agents')
+        .select('id, name, email, total_leads_assigned')
+        .eq('status', 'active')
+        .order('total_leads_assigned', { ascending: true })
+        .limit(1);
+
+      if (!agentsError && activeAgents && activeAgents.length > 0) {
+        assignedAgent = activeAgents[0];
+        
+        // Asignar el lead al agente
+        const { error: updateError } = await supabase
+          .from('leads')
+          .update({ assigned_agent_id: assignedAgent.id })
+          .eq('id', insertedLead.id);
+
+        if (updateError) {
+          console.error('Error al asignar lead al agente:', updateError);
+        } else {
+          // Incrementar contador del agente
+          await supabase
+            .from('sales_agents')
+            .update({ 
+              total_leads_assigned: (assignedAgent.total_leads_assigned || 0) + 1 
+            })
+            .eq('id', assignedAgent.id);
+          
+          // Crear registro de asignación
+          await supabase
+            .from('lead_assignments')
+            .insert([{
+              lead_id: insertedLead.id,
+              agent_id: assignedAgent.id,
+              assigned_at: new Date().toISOString(),
+              status: 'active',
+              notes: `Asignación automática vía Round Robin - Score inicial: ${initialScore} (${initialStatus})`
+            }]);
+
+          console.log(`Lead ${insertedLead.id} asignado a agente ${assignedAgent.name} (${assignedAgent.id})`);
+        }
+      } else {
+        console.log('No hay agentes activos disponibles para asignar');
+      }
+    } catch (assignError) {
+      console.error('Error en el proceso de asignación:', assignError);
+      // Continuar aunque falle la asignación
+    }
+    // ===== FIN ASIGNACIÓN ROUND ROBIN =====
+
     // Crear interacción inicial
     await supabase
       .from('lead_interactions')
@@ -202,9 +258,9 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
         lead_id: insertedLead.id,
         interaction_type: 'note',
         channel: data.origin === 'Chatbot WA' ? 'WhatsApp' : 'System',
-        message: `Lead registrado desde ${data.origin}${data.manychat_user_id ? ` - ManyChat ID: ${data.manychat_user_id}` : ''}`,
+        message: `Lead registrado desde ${data.origin}${data.manychat_user_id ? ` - ManyChat ID: ${data.manychat_user_id}` : ''}${assignedAgent ? ` - Asignado a: ${assignedAgent.name}` : ''}`,
         direction: 'inbound',
-        agent_id: null
+        agent_id: assignedAgent?.id || null
       }]);
 
     // Si solicitó prueba de manejo
@@ -228,7 +284,9 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
           duration_minutes: 30,
           status: 'scheduled',
           pickup_location: 'agencia',
-          notes: `Prueba de manejo programada desde ${data.origin}`
+          notes: `Prueba de manejo programada desde ${data.origin}`,
+          agent_id: assignedAgent?.id || null,
+          agent_name: assignedAgent?.name || null
         }]);
     }
 
@@ -238,9 +296,13 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
         lead_id: insertedLead.id,
         name: insertedLead.name,
         score: insertedLead.score,
-        status: insertedLead.status
+        status: insertedLead.status,
+        assigned_agent_id: assignedAgent?.id || null,
+        assigned_agent_name: assignedAgent?.name || null
       },
-      message: `Lead "${insertedLead.name}" creado exitosamente con score ${insertedLead.score} (${initialStatus})`
+      message: assignedAgent 
+        ? `Lead "${insertedLead.name}" creado exitosamente con score ${insertedLead.score} (${initialStatus}) y asignado a ${assignedAgent.name}`
+        : `Lead "${insertedLead.name}" creado exitosamente con score ${insertedLead.score} (${initialStatus}) - Sin agentes disponibles para asignar`
     };
 
   } catch (error) {
