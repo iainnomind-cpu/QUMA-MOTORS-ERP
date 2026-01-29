@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase, Lead, Client, SalesAgent, LeadInteraction, LeadFollowUp, LeadAttachment } from '../lib/supabase';
 import { LeadScoringEngine } from '../lib/scoringEngine';
 import { useNotificationContext } from '../context/NotificationContext';
-import { createLeadNotification, createGreenLeadNotification, createLowScoreNotification, createFollowUpNotification } from '../utils/notificationHelpers';
+import { createGreenLeadNotification, createLowScoreNotification, createFollowUpNotification } from '../utils/notificationHelpers';
 import { useAuth } from '../contexts/AuthContext';
 import { canDeleteLead, canViewAllLeads, canAssignLead, canDeleteClient, type Role } from '../utils/permissions';
 import {
@@ -532,7 +532,7 @@ export function LeadsModule() {
           .eq('id', existingAppointments[0].id);
       }
 
-      const notification = createLeadNotification({
+      const notification = createGreenLeadNotification({
         name: formData.name,
         score: scoreAdjustment.newScore,
         status: scoreAdjustment.newStatus,
