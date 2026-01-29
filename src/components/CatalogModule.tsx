@@ -13,7 +13,7 @@ type MainView = 'motorcycles' | 'parts';
 
 export function CatalogModule() {
   const { user } = useAuth();
-  const { addNotification } = useNotificationContext();
+  const { addNotification, notifications } = useNotificationContext();
   const [mainView, setMainView] = useState<MainView>('motorcycles');
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,6 +29,14 @@ export function CatalogModule() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
+
+  const hasExistingStockNotification = (itemId: string, notifications: any[]) => {
+    return notifications.some(
+      n => n.entity_id === itemId &&
+      (n.type === 'low_stock_alert' || n.type === 'out_of_stock_alert') &&
+      !n.is_read
+    );
+  };
 
   const [formData, setFormData] = useState({
     segment: 'Deportiva',
@@ -69,16 +77,18 @@ export function CatalogModule() {
         .eq('active', true);
 
       lowStockItems?.forEach(item => {
-        const notification = createLowStockNotification({
-          id: item.id,
-          model: item.model,
-          stock: item.stock,
-          segment: item.segment,
-          price: item.price_cash
-        });
+        if (!hasExistingStockNotification(item.id, notifications)) {
+          const notification = createLowStockNotification({
+            id: item.id,
+            model: item.model,
+            stock: item.stock,
+            segment: item.segment,
+            price: item.price_cash
+          });
 
-        if (notification) {
-          addNotification(notification);
+          if (notification) {
+            addNotification(notification);
+          }
         }
       });
     };
@@ -86,7 +96,7 @@ export function CatalogModule() {
     const interval = setInterval(checkLowStock, 1800000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [notifications]);
 
   const loadCatalog = async () => {
     const { data, error } = await supabase
@@ -99,16 +109,18 @@ export function CatalogModule() {
 
       data?.forEach(item => {
         if (item.stock <= 2 && item.active) {
-          const notification = createLowStockNotification({
-            id: item.id,
-            model: item.model,
-            stock: item.stock,
-            segment: item.segment,
-            price: item.price_cash
-          });
+          if (!hasExistingStockNotification(item.id, notifications)) {
+            const notification = createLowStockNotification({
+              id: item.id,
+              model: item.model,
+              stock: item.stock,
+              segment: item.segment,
+              price: item.price_cash
+            });
 
-          if (notification) {
-            addNotification(notification);
+            if (notification) {
+              addNotification(notification);
+            }
           }
         }
       });
@@ -253,7 +265,6 @@ export function CatalogModule() {
       }
     }
 
-    // Convertir strings a números solo al enviar
     const dataToSubmit = {
       segment: formData.segment,
       model: formData.model,
