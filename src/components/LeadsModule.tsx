@@ -4,6 +4,7 @@ import { LeadScoringEngine } from '../lib/scoringEngine';
 import { useNotificationContext } from '../context/NotificationContext';
 import { createGreenLeadNotification, createLowScoreNotification, createFollowUpNotification } from '../utils/notificationHelpers';
 import { useAuth } from '../contexts/AuthContext';
+import { useBranch } from '../contexts/BranchContext';
 import { canDeleteLead, canViewAllLeads, canAssignLead, canDeleteClient, type Role } from '../utils/permissions';
 import {
   Users, Phone, Mail, Calendar, TrendingUp, MapPin, Briefcase, DollarSign, Clock, Star, X,
@@ -15,6 +16,7 @@ type ViewMode = 'leads' | 'clients' | 'detail' | 'create' | 'edit' | 'client-det
 
 export function LeadsModule() {
   const { user } = useAuth();
+  const { selectedBranchId } = useBranch();
   const [viewMode, setViewMode] = useState<ViewMode>('leads');
   const [leads, setLeads] = useState<Lead[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -28,6 +30,7 @@ export function LeadsModule() {
   const [followUps, setFollowUps] = useState<LeadFollowUp[]>([]);
   const [attachments, setAttachments] = useState<LeadAttachment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [catalogModels, setCatalogModels] = useState<{ id: string; model: string; segment: string; year: number }[]>([]);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -97,7 +100,7 @@ export function LeadsModule() {
 
   useEffect(() => {
     loadAllData();
-  }, []);
+  }, [selectedBranchId]);
 
   useEffect(() => {
     filterLeads();
@@ -140,8 +143,17 @@ export function LeadsModule() {
     checkTodayFollowUps();
   }, []);
 
+  const loadCatalogModels = async () => {
+    const { data } = await supabase
+      .from('catalog')
+      .select('id, model, segment, year')
+      .eq('active', true)
+      .order('model');
+    if (data) setCatalogModels(data);
+  };
+
   const loadAllData = async () => {
-    await Promise.all([loadLeads(), loadClients(), loadAgents()]);
+    await Promise.all([loadLeads(), loadClients(), loadAgents(), loadCatalogModels()]);
     setLoading(false);
   };
 
@@ -149,6 +161,11 @@ export function LeadsModule() {
     let query = supabase
       .from('leads')
       .select('*');
+
+    // Filter by branch
+    if (selectedBranchId) {
+      query = query.eq('branch_id', selectedBranchId);
+    }
 
     if (user?.role === 'vendedor') {
       const { data: agentData } = await supabase
@@ -172,11 +189,15 @@ export function LeadsModule() {
   };
 
   const loadClients = async () => {
-    const { data } = await supabase
+    let query = supabase
       .from('clients')
-      .select('*')
-      .order('created_at', { ascending: false });
+      .select('*');
 
+    if (selectedBranchId) {
+      query = query.eq('branch_id', selectedBranchId);
+    }
+
+    const { data } = await query.order('created_at', { ascending: false });
     if (data) setClients(data);
   };
 
@@ -332,7 +353,8 @@ export function LeadsModule() {
       has_income_proof: false,
       has_address_proof: false,
       score: 45,
-      status: 'Rojo'
+      status: 'Rojo',
+      branch_id: selectedBranchId || user?.branch_id || null
     };
 
     const { data: leadData, error } = await supabase
@@ -788,7 +810,8 @@ export function LeadsModule() {
         purchased_model: convertFormData.purchased_model || selectedLead.model_interested,
         purchase_type: convertFormData.purchase_type,
         purchase_price: convertFormData.purchase_price ? parseFloat(convertFormData.purchase_price) : null,
-        purchase_notes: convertFormData.purchase_notes
+        purchase_notes: convertFormData.purchase_notes,
+        branch_id: selectedLead.branch_id || selectedBranchId || null
       }])
       .select();
 
@@ -875,7 +898,7 @@ export function LeadsModule() {
   };
 
   const getStatusColor = (status: string) => {
-    switch(status) {
+    switch (status) {
       case 'Verde': return 'bg-green-100 text-green-800 border-green-300';
       case 'Amarillo': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
       case 'Rojo': return 'bg-red-100 text-red-800 border-red-300';
@@ -886,7 +909,7 @@ export function LeadsModule() {
   };
 
   const getChannelIcon = (channel: string) => {
-    switch(channel) {
+    switch (channel) {
       case 'WhatsApp': return <MessageSquare className="w-4 h-4 text-green-600" />;
       case 'Phone': return <Phone className="w-4 h-4 text-blue-600" />;
       case 'Email': return <Mail className="w-4 h-4 text-orange-600" />;
@@ -1275,10 +1298,10 @@ export function LeadsModule() {
                   <span className="text-gray-600 font-medium">Tipo de Compra:</span>
                   <span className="font-semibold text-gray-800">
                     {selectedClient.purchase_type === 'moto_nueva' ? 'Motocicleta Nueva' :
-                     selectedClient.purchase_type === 'moto_usada' ? 'Motocicleta Usada' :
-                     selectedClient.purchase_type === 'refacciones' ? 'Refacciones' :
-                     selectedClient.purchase_type === 'accesorios' ? 'Accesorios' :
-                     selectedClient.purchase_type === 'servicio' ? 'Servicio' : 'Otro'}
+                      selectedClient.purchase_type === 'moto_usada' ? 'Motocicleta Usada' :
+                        selectedClient.purchase_type === 'refacciones' ? 'Refacciones' :
+                          selectedClient.purchase_type === 'accesorios' ? 'Accesorios' :
+                            selectedClient.purchase_type === 'servicio' ? 'Servicio' : 'Otro'}
                   </span>
                 </div>
               )}
@@ -1316,21 +1339,21 @@ export function LeadsModule() {
             <div className="space-y-3">
               <button
                 className="w-full flex items-center gap-3 p-4 bg-gradient-to-r from-blue-50 to-blue-100 hover:from-blue-100 hover:to-blue-200 border-2 border-blue-300 rounded-lg transition-all font-semibold text-gray-800"
-                onClick={() => {}}
+                onClick={() => { }}
               >
                 <Calendar className="w-5 h-5 text-blue-600" />
                 Agendar Servicio
               </button>
               <button
                 className="w-full flex items-center gap-3 p-4 bg-gradient-to-r from-green-50 to-green-100 hover:from-green-100 hover:to-green-200 border-2 border-green-300 rounded-lg transition-all font-semibold text-gray-800"
-                onClick={() => {}}
+                onClick={() => { }}
               >
                 <MessageSquare className="w-5 h-5 text-green-600" />
                 Enviar WhatsApp
               </button>
               <button
                 className="w-full flex items-center gap-3 p-4 bg-gradient-to-r from-orange-50 to-orange-100 hover:from-orange-100 hover:to-orange-200 border-2 border-orange-300 rounded-lg transition-all font-semibold text-gray-800"
-                onClick={() => {}}
+                onClick={() => { }}
               >
                 <Mail className="w-5 h-5 text-orange-600" />
                 Enviar Email
@@ -1511,13 +1534,18 @@ export function LeadsModule() {
 
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">Modelo de Interés</label>
-              <input
-                type="text"
+              <select
                 value={formData.model_interested}
                 onChange={(e) => setFormData({ ...formData, model_interested: e.target.value })}
                 className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                placeholder="Ej: MT-07, YZF-R3"
-              />
+              >
+                <option value="">Seleccionar modelo...</option>
+                {catalogModels.map(item => (
+                  <option key={item.id} value={item.model}>
+                    {item.model} — {item.segment} {item.year}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
@@ -1889,11 +1917,10 @@ export function LeadsModule() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <div className="text-sm text-gray-600 mb-1">Estado</div>
-                <div className={`inline-block px-3 py-1 rounded-full font-semibold ${
-                  selectedLead.test_drive_completed
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-yellow-100 text-yellow-800'
-                }`}>
+                <div className={`inline-block px-3 py-1 rounded-full font-semibold ${selectedLead.test_drive_completed
+                  ? 'bg-green-100 text-green-800'
+                  : 'bg-yellow-100 text-yellow-800'
+                  }`}>
                   {selectedLead.test_drive_completed ? 'Completada' : 'Pendiente'}
                 </div>
               </div>
@@ -1945,9 +1972,8 @@ export function LeadsModule() {
             <div className="mt-4 pt-4 border-t border-green-200">
               <h5 className="text-sm font-bold text-gray-700 mb-3">Documentos requeridos para financiamiento</h5>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className={`flex items-center gap-3 p-3 rounded-lg ${
-                  selectedLead.has_id_document ? 'bg-green-100' : 'bg-gray-100'
-                }`}>
+                <div className={`flex items-center gap-3 p-3 rounded-lg ${selectedLead.has_id_document ? 'bg-green-100' : 'bg-gray-100'
+                  }`}>
                   {selectedLead.has_id_document ? (
                     <CheckCircle className="w-5 h-5 text-green-600" />
                   ) : (
@@ -1955,9 +1981,8 @@ export function LeadsModule() {
                   )}
                   <span className="text-sm font-medium">INE</span>
                 </div>
-                <div className={`flex items-center gap-3 p-3 rounded-lg ${
-                  selectedLead.has_income_proof ? 'bg-green-100' : 'bg-gray-100'
-                }`}>
+                <div className={`flex items-center gap-3 p-3 rounded-lg ${selectedLead.has_income_proof ? 'bg-green-100' : 'bg-gray-100'
+                  }`}>
                   {selectedLead.has_income_proof ? (
                     <CheckCircle className="w-5 h-5 text-green-600" />
                   ) : (
@@ -1965,9 +1990,8 @@ export function LeadsModule() {
                   )}
                   <span className="text-sm font-medium">Comprobante de Ingresos</span>
                 </div>
-                <div className={`flex items-center gap-3 p-3 rounded-lg ${
-                  selectedLead.has_address_proof ? 'bg-green-100' : 'bg-gray-100'
-                }`}>
+                <div className={`flex items-center gap-3 p-3 rounded-lg ${selectedLead.has_address_proof ? 'bg-green-100' : 'bg-gray-100'
+                  }`}>
                   {selectedLead.has_address_proof ? (
                     <CheckCircle className="w-5 h-5 text-green-600" />
                   ) : (
@@ -2189,11 +2213,10 @@ export function LeadsModule() {
                             <CheckCircle className="w-4 h-4" />
                           </button>
                         )}
-                        <span className={`px-2 py-1 text-xs font-bold rounded ${
-                          followUp.status === 'completed' ? 'bg-green-100 text-green-800' :
+                        <span className={`px-2 py-1 text-xs font-bold rounded ${followUp.status === 'completed' ? 'bg-green-100 text-green-800' :
                           followUp.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
+                            'bg-gray-100 text-gray-800'
+                          }`}>
                           {followUp.status}
                         </span>
                       </div>
@@ -2546,9 +2569,8 @@ export function LeadsModule() {
             <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
               <div className="text-center mb-4">
                 <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-3">
-                  <TrendingUp className={`w-8 h-8 ${
-                    scoreDetails.adjustment > 0 ? 'text-green-600' : 'text-red-600'
-                  }`} />
+                  <TrendingUp className={`w-8 h-8 ${scoreDetails.adjustment > 0 ? 'text-green-600' : 'text-red-600'
+                    }`} />
                 </div>
                 <h3 className="text-xl font-bold text-gray-800 mb-2">Score Actualizado</h3>
                 <div className="flex items-center justify-center gap-2 mb-3">
@@ -2604,11 +2626,10 @@ export function LeadsModule() {
         <div className="flex border-b border-gray-200">
           <button
             onClick={() => setViewMode('leads')}
-            className={`flex-1 px-6 py-4 font-semibold transition-colors ${
-              viewMode === 'leads'
-                ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600'
-                : 'text-gray-600 hover:bg-gray-50'
-            }`}
+            className={`flex-1 px-6 py-4 font-semibold transition-colors ${viewMode === 'leads'
+              ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600'
+              : 'text-gray-600 hover:bg-gray-50'
+              }`}
           >
             <div className="flex items-center justify-center gap-2">
               <TrendingUp className="w-5 h-5" />
@@ -2617,11 +2638,10 @@ export function LeadsModule() {
           </button>
           <button
             onClick={() => setViewMode('clients')}
-            className={`flex-1 px-6 py-4 font-semibold transition-colors ${
-              viewMode === 'clients'
-                ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600'
-                : 'text-gray-600 hover:bg-gray-50'
-            }`}
+            className={`flex-1 px-6 py-4 font-semibold transition-colors ${viewMode === 'clients'
+              ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600'
+              : 'text-gray-600 hover:bg-gray-50'
+              }`}
           >
             <div className="flex items-center justify-center gap-2">
               <Users className="w-5 h-5" />
@@ -2815,13 +2835,13 @@ export function LeadsModule() {
 
           {((viewMode === 'leads' && filteredLeads.length === 0) ||
             (viewMode === 'clients' && filteredClients.length === 0)) && (
-            <div className="bg-white rounded-lg shadow-md p-12 text-center">
-              <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">
-                No se encontraron {viewMode === 'leads' ? 'leads' : 'clientes'} con los filtros seleccionados
-              </p>
-            </div>
-          )}
+              <div className="bg-white rounded-lg shadow-md p-12 text-center">
+                <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <p className="text-gray-500">
+                  No se encontraron {viewMode === 'leads' ? 'leads' : 'clientes'} con los filtros seleccionados
+                </p>
+              </div>
+            )}
         </div>
       </div>
     </div>

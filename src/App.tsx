@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import { BranchProvider, useBranch } from './contexts/BranchContext';
 import { NotificationProvider, useNotificationContext } from './context/NotificationContext';
 import { Login } from './components/Login';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -33,7 +34,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { canAccessModule, getRoleBadgeColor, getRoleDisplayName } from './utils/permissions';
+import { canAccessModule, getRoleBadgeColor, getRoleDisplayName, canSwitchBranch } from './utils/permissions';
+import { Building2 } from 'lucide-react';
 
 type Module = 'dashboard' | 'leads' | 'pipeline' | 'catalog' | 'finance' | 'marketing' | 'scheduling' | 'admin' | 'users';
 
@@ -43,6 +45,7 @@ function AppContent() {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const { notifications, markAsRead, markAllAsRead, dismissNotification } = useNotificationContext();
   const { user, signOut } = useAuth();
+  const { currentBranch, allBranches, selectedBranchId, switchBranch, isAllBranchesView } = useBranch();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -75,9 +78,8 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex">
       <aside
-        className={`${
-          sidebarCollapsed ? 'w-20' : 'w-72'
-        } bg-white shadow-xl border-r-2 border-gray-200 transition-all duration-300 flex flex-col fixed h-screen z-40`}
+        className={`${sidebarCollapsed ? 'w-20' : 'w-72'
+          } bg-white shadow-xl border-r-2 border-gray-200 transition-all duration-300 flex flex-col fixed h-screen z-40`}
       >
         <div className="p-6 border-b-2 border-gray-200 bg-gradient-to-br from-red-600 to-red-700">
           <div className="flex items-center justify-between">
@@ -109,11 +111,10 @@ function AppContent() {
                 <button
                   key={module.id}
                   onClick={() => setActiveModule(module.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold transition-all ${
-                    isActive
-                      ? `${module.bgColor} ${module.color} shadow-md`
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold transition-all ${isActive
+                    ? `${module.bgColor} ${module.color} shadow-md`
+                    : 'text-gray-600 hover:bg-gray-50'
+                    }`}
                   title={sidebarCollapsed ? module.name : ''}
                 >
                   <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? module.color : ''}`} />
@@ -143,9 +144,8 @@ function AppContent() {
       </aside>
 
       <main
-        className={`flex-1 ${
-          sidebarCollapsed ? 'ml-20' : 'ml-72'
-        } transition-all duration-300`}
+        className={`flex-1 ${sidebarCollapsed ? 'ml-20' : 'ml-72'
+          } transition-all duration-300`}
       >
         <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-30">
           <div className="px-8 py-4">
@@ -165,6 +165,26 @@ function AppContent() {
                   onMarkAllAsRead={markAllAsRead}
                   onDismiss={dismissNotification}
                 />
+                {/* Branch Selector */}
+                <div className="border-l border-gray-300 pl-4 flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-gray-500" />
+                  {canSwitchBranch(user?.role as any) ? (
+                    <select
+                      value={selectedBranchId || 'all'}
+                      onChange={(e) => switchBranch(e.target.value === 'all' ? null : e.target.value)}
+                      className="text-sm font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="all">🏢 Todas las Sucursales</option>
+                      {allBranches.map(b => (
+                        <option key={b.id} value={b.id}>📍 {b.name}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="text-sm font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
+                      📍 {currentBranch?.name || 'Sin sucursal'}
+                    </span>
+                  )}
+                </div>
                 <div className="border-l border-gray-300 pl-4 relative">
                   <button
                     onClick={() => setShowUserDropdown(!showUserDropdown)}
@@ -249,7 +269,7 @@ function AppContent() {
           {activeModule === 'scheduling' && <SchedulingModule />}
           {activeModule === 'marketing' && <MarketingAutomation />}
           {activeModule === 'users' && <UsersModule />}
-          {activeModule === 'admin' && <AdminModule />}
+          {activeModule === 'admin' && <AdminModule key="admin-module-v2" />}
         </div>
 
         <footer className="bg-white border-t border-gray-200 mt-12">
@@ -272,19 +292,21 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <NotificationProvider>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route
-              path="/*"
-              element={
-                <ProtectedRoute>
-                  <AppContent />
-                </ProtectedRoute>
-              }
-            />
-          </Routes>
-        </NotificationProvider>
+        <BranchProvider>
+          <NotificationProvider>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route
+                path="/*"
+                element={
+                  <ProtectedRoute>
+                    <AppContent />
+                  </ProtectedRoute>
+                }
+              />
+            </Routes>
+          </NotificationProvider>
+        </BranchProvider>
       </AuthProvider>
     </BrowserRouter>
   );

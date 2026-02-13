@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase, TestDriveAppointment, ServiceAppointment, ServiceTechnician, ServiceHistory, ServiceReminder, CatalogItem, Lead, Client } from '../lib/supabase';
 import { useNotificationContext } from '../context/NotificationContext';
+import { useBranch } from '../contexts/BranchContext';
 import {
   createTestDriveScheduledNotification,
   createServiceScheduledNotification,
@@ -14,6 +15,7 @@ import {
 type ViewMode = 'test_drives' | 'service' | 'history' | 'technicians';
 
 export function SchedulingModule() {
+  const { selectedBranchId } = useBranch();
   const [viewMode, setViewMode] = useState<ViewMode>('test_drives');
   const [testDrives, setTestDrives] = useState<TestDriveAppointment[]>([]);
   const [serviceAppointments, setServiceAppointments] = useState<ServiceAppointment[]>([]);
@@ -91,7 +93,7 @@ export function SchedulingModule() {
       testDriveSubscription.unsubscribe();
       leadSubscription.unsubscribe();
     };
-  }, []);
+  }, [selectedBranchId]);
 
   useEffect(() => {
     const checkUpcomingAppointments = async () => {
@@ -161,10 +163,15 @@ export function SchedulingModule() {
   };
 
   const loadTestDrives = async () => {
-    const { data } = await supabase
+    let query = supabase
       .from('test_drive_appointments')
-      .select('*')
-      .order('appointment_date', { ascending: true });
+      .select('*');
+
+    if (selectedBranchId) {
+      query = query.eq('branch_id', selectedBranchId);
+    }
+
+    const { data } = await query.order('appointment_date', { ascending: true });
     if (data) setTestDrives(data);
   };
 
@@ -205,10 +212,15 @@ export function SchedulingModule() {
   };
 
   const loadServiceAppointments = async () => {
-    const { data } = await supabase
+    let query = supabase
       .from('service_appointments')
-      .select('*')
-      .order('appointment_date', { ascending: true });
+      .select('*');
+
+    if (selectedBranchId) {
+      query = query.eq('branch_id', selectedBranchId);
+    }
+
+    const { data } = await query.order('appointment_date', { ascending: true });
     if (data) setServiceAppointments(data);
   };
 
@@ -659,11 +671,10 @@ export function SchedulingModule() {
         <div className="flex border-b border-gray-200">
           <button
             onClick={() => setViewMode('test_drives')}
-            className={`flex-1 px-6 py-4 font-semibold transition-colors ${
-              viewMode === 'test_drives'
-                ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600'
-                : 'text-gray-600 hover:bg-gray-50'
-            }`}
+            className={`flex-1 px-6 py-4 font-semibold transition-colors ${viewMode === 'test_drives'
+              ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600'
+              : 'text-gray-600 hover:bg-gray-50'
+              }`}
           >
             <div className="flex items-center justify-center gap-2">
               <Bike className="w-5 h-5" />
@@ -672,11 +683,10 @@ export function SchedulingModule() {
           </button>
           <button
             onClick={() => setViewMode('service')}
-            className={`flex-1 px-6 py-4 font-semibold transition-colors ${
-              viewMode === 'service'
-                ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600'
-                : 'text-gray-600 hover:bg-gray-50'
-            }`}
+            className={`flex-1 px-6 py-4 font-semibold transition-colors ${viewMode === 'service'
+              ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600'
+              : 'text-gray-600 hover:bg-gray-50'
+              }`}
           >
             <div className="flex items-center justify-center gap-2">
               <Wrench className="w-5 h-5" />
@@ -685,11 +695,10 @@ export function SchedulingModule() {
           </button>
           <button
             onClick={() => setViewMode('history')}
-            className={`flex-1 px-6 py-4 font-semibold transition-colors ${
-              viewMode === 'history'
-                ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600'
-                : 'text-gray-600 hover:bg-gray-50'
-            }`}
+            className={`flex-1 px-6 py-4 font-semibold transition-colors ${viewMode === 'history'
+              ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600'
+              : 'text-gray-600 hover:bg-gray-50'
+              }`}
           >
             <div className="flex items-center justify-center gap-2">
               <FileText className="w-5 h-5" />
@@ -698,11 +707,10 @@ export function SchedulingModule() {
           </button>
           <button
             onClick={() => setViewMode('technicians')}
-            className={`flex-1 px-6 py-4 font-semibold transition-colors ${
-              viewMode === 'technicians'
-                ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600'
-                : 'text-gray-600 hover:bg-gray-50'
-            }`}
+            className={`flex-1 px-6 py-4 font-semibold transition-colors ${viewMode === 'technicians'
+              ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600'
+              : 'text-gray-600 hover:bg-gray-50'
+              }`}
           >
             <div className="flex items-center justify-center gap-2">
               <Wrench className="w-5 h-5" />
@@ -1004,9 +1012,8 @@ export function SchedulingModule() {
                         </div>
                         <div>
                           <h4 className="font-bold text-gray-800">{tech.name}</h4>
-                          <span className={`text-xs font-semibold ${
-                            tech.status === 'active' ? 'text-green-600' : 'text-gray-500'
-                          }`}>
+                          <span className={`text-xs font-semibold ${tech.status === 'active' ? 'text-green-600' : 'text-gray-500'
+                            }`}>
                             {tech.status}
                           </span>
                         </div>

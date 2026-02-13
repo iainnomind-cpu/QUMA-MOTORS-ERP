@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase, Lead, Client, SalesAgent, LeadInteraction, LeadFollowUp, LeadAttachment } from '../lib/supabase';
+import { useBranch } from '../contexts/BranchContext';
 import { LeadScoringEngine } from '../lib/scoringEngine';
 import {
   Trello, Phone, Mail, Calendar, Star, TrendingUp, X, User, DollarSign, Clock, Building,
@@ -7,6 +8,7 @@ import {
 } from 'lucide-react';
 
 export function PipelineKanban() {
+  const { selectedBranchId } = useBranch();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,7 +36,7 @@ export function PipelineKanban() {
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [selectedBranchId]);
 
   const loadAllData = async () => {
     await Promise.all([loadLeads(), loadClients(), loadAgents()]);
@@ -42,22 +44,30 @@ export function PipelineKanban() {
   };
 
   const loadLeads = async () => {
-    const { data, error } = await supabase
+    let query = supabase
       .from('leads')
-      .select('*')
-      .order('score', { ascending: false });
+      .select('*');
 
+    if (selectedBranchId) {
+      query = query.eq('branch_id', selectedBranchId);
+    }
+
+    const { data, error } = await query.order('score', { ascending: false });
     if (!error && data) {
       setLeads(data);
     }
   };
 
   const loadClients = async () => {
-    const { data } = await supabase
+    let query = supabase
       .from('clients')
-      .select('*')
-      .order('created_at', { ascending: false });
+      .select('*');
 
+    if (selectedBranchId) {
+      query = query.eq('branch_id', selectedBranchId);
+    }
+
+    const { data } = await query.order('created_at', { ascending: false });
     if (data) setClients(data);
   };
 
@@ -109,7 +119,7 @@ export function PipelineKanban() {
   };
 
   const getChannelIcon = (channel: string) => {
-    switch(channel) {
+    switch (channel) {
       case 'WhatsApp': return <Mail className="w-4 h-4 text-green-600" />;
       case 'Phone': return <Phone className="w-4 h-4 text-blue-600" />;
       case 'Email': return <Mail className="w-4 h-4 text-orange-600" />;
@@ -143,7 +153,7 @@ export function PipelineKanban() {
   const clientesActivos = clients;
 
   const getColumnColor = (status: string) => {
-    switch(status) {
+    switch (status) {
       case 'Rojo': return {
         bg: 'from-red-50 to-red-100',
         border: 'border-red-300',
@@ -441,13 +451,12 @@ export function PipelineKanban() {
             <div className="overflow-y-auto max-h-[85vh] p-6 space-y-6">
               <div className="flex items-center justify-between pb-4 border-b-2 border-gray-200">
                 <div>
-                  <span className={`inline-block px-4 py-2 rounded-lg font-bold text-sm ${
-                    selectedLead.status === 'Verde'
+                  <span className={`inline-block px-4 py-2 rounded-lg font-bold text-sm ${selectedLead.status === 'Verde'
                       ? 'bg-green-100 text-green-800 border-2 border-green-300'
                       : selectedLead.status === 'Amarillo'
-                      ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-300'
-                      : 'bg-red-100 text-red-800 border-2 border-red-300'
-                  }`}>
+                        ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-300'
+                        : 'bg-red-100 text-red-800 border-2 border-red-300'
+                    }`}>
                     {selectedLead.status}
                   </span>
                 </div>
@@ -690,11 +699,10 @@ export function PipelineKanban() {
                                   <CheckCircle className="w-4 h-4" />
                                 </button>
                               )}
-                              <span className={`px-2 py-1 text-xs font-bold rounded ${
-                                followUp.status === 'completed' ? 'bg-green-100 text-green-800' :
-                                followUp.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-gray-100 text-gray-800'
-                              }`}>
+                              <span className={`px-2 py-1 text-xs font-bold rounded ${followUp.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                  followUp.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                    'bg-gray-100 text-gray-800'
+                                }`}>
                                 {followUp.status}
                               </span>
                             </div>
@@ -747,9 +755,8 @@ export function PipelineKanban() {
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
             <div className="text-center mb-4">
               <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-3">
-                <TrendingUp className={`w-8 h-8 ${
-                  scoreDetails.adjustment > 0 ? 'text-green-600' : 'text-red-600'
-                }`} />
+                <TrendingUp className={`w-8 h-8 ${scoreDetails.adjustment > 0 ? 'text-green-600' : 'text-red-600'
+                  }`} />
               </div>
               <h3 className="text-xl font-bold text-gray-800 mb-1">Score Actualizado</h3>
               <p className="text-sm text-gray-600 mb-3">{scoreDetails.leadName}</p>

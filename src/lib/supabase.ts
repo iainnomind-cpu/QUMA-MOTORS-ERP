@@ -9,13 +9,91 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// ===== Multi-Branch Types =====
+export interface Branch {
+  id: string;
+  name: string;
+  code: string;
+  address: string | null;
+  city: string | null;
+  phone: string | null;
+  manager_name: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BranchCatalogStock {
+  id: string;
+  branch_id: string;
+  catalog_item_id: string;
+  stock: number;
+  test_drive_available: boolean;
+}
+
+// ===== New Parts Inventory System Types =====
+
+export interface PartsCatalog {
+  id: string;
+  sku: string;
+  name: string;
+  category: 'refaccion' | 'accesorio';
+  subcategory: string | null;
+  description: string | null;
+  compatible_models: string[];
+  brand: string | null;
+  price_retail: number;
+  cost_price: number | null;
+  supplier: string | null;
+  image_url: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PartsInventory {
+  id: string;
+  branch_id: string;
+  catalog_id: string;
+  stock_quantity: number;
+  min_stock_alert: number;
+  location: string | null;
+  last_inventory_check: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Joined Type for Frontend Display
+export interface PartItem extends PartsCatalog {
+  inventory_id?: string;
+  branch_id?: string;
+  stock_quantity: number;
+  min_stock_alert: number;
+  location: string | null;
+}
+
+export interface PartsTransfer {
+  id: string;
+  catalog_id: string; // Changed from part_id to catalog_id
+  from_branch_id: string;
+  to_branch_id: string;
+  quantity: number;
+  status: 'pending' | 'in_transit' | 'completed' | 'cancelled';
+  requested_by: string | null;
+  approved_by: string | null;
+  notes: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
 export interface CatalogItem {
   id: string;
   segment: string;
   model: string;
   price_cash: number;
-  stock: number;
-  test_drive_available: boolean;
+  stock?: number; // Optional: Joined from branch_catalog_stock
+  test_drive_available?: boolean; // Optional: Joined from branch_catalog_stock
+  branch_stock_id?: string; // Optional: Used for frontend to check if item is in branch inventory
   year: number;
   color_options: string[];
   engine_cc: number | null;
@@ -61,6 +139,7 @@ export interface Lead {
   has_id_document: boolean;
   has_income_proof: boolean;
   has_address_proof: boolean;
+  branch_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -79,6 +158,7 @@ export interface Client {
   purchase_price: number | null;
   original_interest_model: string | null;
   purchase_notes: string | null;
+  branch_id: string | null;
   created_at: string;
 }
 
@@ -91,6 +171,7 @@ export interface SalesAgent {
   total_leads_assigned: number;
   total_leads_converted: number;
   conversion_rate: number;
+  branch_id: string | null;
   created_at: string;
 }
 
@@ -141,6 +222,7 @@ export interface WhatsAppTemplate {
   category: string;
   message_template: string;
   active: boolean;
+  status?: string; // e.g. APPROVED, REJECTED, PENDING
   created_at: string;
 }
 
@@ -164,6 +246,7 @@ export interface AutomatedCampaign {
   total_sent: number;
   total_delivered: number;
   total_responses: number;
+  branch_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -179,6 +262,8 @@ export interface CampaignLog {
   sent_at: string | null;
   delivered_at: string | null;
   responded_at: string | null;
+  wamid?: string;
+  branch_id: string | null;
 }
 
 export interface LeadAttachment {
@@ -252,6 +337,7 @@ export interface ActivityLog {
   entity_id: string | null;
   changes: Record<string, any>;
   ip_address: string | null;
+  branch_id: string | null;
   created_at: string;
 }
 
@@ -267,6 +353,7 @@ export interface FinancingRule {
   minimum_price: number | null;
   active: boolean;
   description: string | null;
+  branch_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -288,6 +375,7 @@ export interface FinancingCampaign {
   benefits_description: string | null;
   active: boolean;
   priority: number;
+  branch_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -325,6 +413,7 @@ export interface PartsAccessoriesInventory {
   supplier: string | null;
   image_url: string | null;
   active: boolean;
+  branch_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -343,6 +432,7 @@ export interface PartsSale {
   payment_method: string | null;
   notes: string | null;
   sold_by: string | null;
+  branch_id: string | null;
   created_at: string;
 }
 
@@ -356,6 +446,7 @@ export interface PartsInventoryMovement {
   reason: string | null;
   reference_id: string | null;
   performed_by: string | null;
+  branch_id: string | null;
   created_at: string;
 }
 
@@ -369,6 +460,7 @@ export interface ServiceTechnician {
   max_daily_appointments: number;
   working_hours_start: string;
   working_hours_end: string;
+  branch_id: string | null;
   created_at: string;
 }
 
@@ -389,6 +481,7 @@ export interface TestDriveAppointment {
   completed_at: string | null;
   feedback: string | null;
   converted_to_sale: boolean;
+  branch_id: string | null;
   created_at: string;
 }
 
@@ -415,6 +508,7 @@ export interface ServiceAppointment {
   total_cost: number;
   notes: string | null;
   completed_at: string | null;
+  branch_id: string | null;
   created_at: string;
 }
 
@@ -434,6 +528,7 @@ export interface ServiceHistory {
   next_service_due_mileage: number | null;
   technician_id: string | null;
   technician_name: string | null;
+  branch_id: string | null;
   created_at: string;
 }
 
@@ -451,4 +546,52 @@ export interface ServiceReminder {
   status: string;
   sent_at: string | null;
   created_at: string;
+}
+
+// ============ Activity Logging Utility ============
+
+interface LogActivityParams {
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userRole: string;
+  branchId?: string | null;
+  branchName?: string;
+  actionType: string;     // e.g. 'create', 'update', 'delete', 'login', 'toggle'
+  entityType: string;     // e.g. 'user', 'lead', 'notification', 'branch', 'scoring_rule'
+  entityId?: string | null;
+  details: Record<string, any>; // specific action details
+}
+
+export async function logActivity(params: LogActivityParams) {
+  try {
+    const changes = {
+      performed_by: {
+        name: params.userName,
+        email: params.userEmail,
+        role: params.userRole,
+        branch_id: params.branchId || null,
+        branch_name: params.branchName || null,
+      },
+      ...params.details,
+    };
+
+    const { error } = await supabase.from('activity_logs').insert([{
+      user_id: params.userId,
+      action_type: params.actionType,
+      entity_type: params.entityType,
+      entity_id: params.entityId || null,
+      changes,
+      branch_id: params.branchId || null,
+      ip_address: null,
+    }]);
+
+    if (error) {
+      console.warn('⚠ logActivity insert failed:', error.message, error.details);
+    } else {
+      console.log('✓ Activity logged:', params.actionType, params.entityType);
+    }
+  } catch (err) {
+    console.error('❌ logActivity exception:', err);
+  }
 }

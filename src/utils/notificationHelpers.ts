@@ -105,6 +105,38 @@ export function createFollowUpNotification(lead: {
   };
 }
 
+/**
+ * Crear notificación de lead estancado (sin actividad X días)
+ */
+export function createStagnantLeadNotification(lead: {
+  id: string;
+  name: string;
+  days_inactive: number;
+  last_activity: string;
+  status: string;
+}): NotificationInput {
+  return {
+    type: 'stagnant_lead_alert',
+    title: '⚠️ Lead Estancado',
+    message: `El lead ${lead.name} no ha tenido actividad en ${lead.days_inactive} días.
+Última actividad: ${new Date(lead.last_activity).toLocaleDateString()}
+Estado: ${lead.status}
+
+💡 Acción sugerida: Enviar mensaje de reactivación o cambiar estado.`,
+    priority: 'high',
+    category: 'lead',
+    entity_type: 'lead',
+    entity_id: lead.id,
+    metadata: {
+      lead_id: lead.id,
+      lead_name: lead.name,
+      days_inactive: lead.days_inactive,
+      last_activity: lead.last_activity,
+      status: lead.status
+    }
+  };
+}
+
 // ========================================
 // 2. NOTIFICACIONES DE AGENDAMIENTO
 // ========================================
@@ -233,6 +265,42 @@ Detalles: ${appointment.details}
       date: appointment.date
     },
     expires_at: appointment.date // Expira después de la cita
+  };
+}
+
+/**
+ * Crear notificación de tarea próxima a vencer
+ */
+export function createUpcomingTaskNotification(task: {
+  id: string;
+  title: string;
+  due_date: string;
+  description?: string;
+}): NotificationInput {
+  const date = new Date(task.due_date);
+  const formattedDate = date.toLocaleDateString('es-MX', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
+  return {
+    type: 'upcoming_task_alert',
+    title: '⏰ Tarea Próxima',
+    message: `"${task.title}" vence el ${formattedDate}.
+${task.description ? `Detalle: ${task.description}` : ''}`,
+    priority: 'medium',
+    category: 'system',
+    entity_type: 'task',
+    entity_id: task.id,
+    metadata: {
+      task_id: task.id,
+      task_title: task.title,
+      due_date: task.due_date
+    },
+    expires_at: task.due_date
   };
 }
 

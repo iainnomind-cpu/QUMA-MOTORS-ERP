@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase, CatalogItem } from '../lib/supabase';
 import { PartsInventoryModule } from './PartsInventoryModule';
 import { useAuth } from '../contexts/AuthContext';
+import { useBranch } from '../contexts/BranchContext'; // Import useBranch
 import { canEditCatalog, type Role } from '../utils/permissions';
 import { Package, CheckCircle, XCircle, Plus, CreditCard as Edit2, Trash2, Eye, FileText, Bike, TrendingUp, DollarSign, Gauge, Palette, X, Search, Filter, Wrench, Upload, Image as ImageIcon } from 'lucide-react';
 import { useNotificationContext } from '../context/NotificationContext';
@@ -13,6 +14,7 @@ type MainView = 'motorcycles' | 'parts';
 
 export function CatalogModule() {
   const { user } = useAuth();
+  const { selectedBranchId } = useBranch(); // Use branch context
   const { addNotification, notifications } = useNotificationContext();
   const [mainView, setMainView] = useState<MainView>('motorcycles');
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
@@ -30,12 +32,42 @@ export function CatalogModule() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
 
+  // Import State
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [searchTermImport, setSearchTermImport] = useState('');
+
   const hasExistingStockNotification = (itemId: string, notifications: any[]) => {
     return notifications.some(
       n => n.entity_id === itemId &&
-      (n.type === 'low_stock_alert' || n.type === 'out_of_stock_alert') &&
-      !n.is_read
+        (n.type === 'low_stock_alert' || n.type === 'out_of_stock_alert') &&
+        !n.is_read
     );
+  };
+
+  // Helpers para persistencia de notificaciones de stock
+  const getNotifiedItems = (): Record<string, number> => {
+    const key = `quma_notified_stock_${user?.id || 'guest'}`;
+    try {
+      return JSON.parse(localStorage.getItem(key) || '{}');
+    } catch {
+      return {};
+    }
+  };
+
+  const updateNotifiedItem = (itemId: string, stock: number) => {
+    const key = `quma_notified_stock_${user?.id || 'guest'}`;
+    const items = getNotifiedItems();
+    items[itemId] = stock;
+    localStorage.setItem(key, JSON.stringify(items));
+  };
+
+  const removeNotifiedItem = (itemId: string) => {
+    const key = `quma_notified_stock_${user?.id || 'guest'}`;
+    const items = getNotifiedItems();
+    if (itemId in items) {
+      delete items[itemId];
+      localStorage.setItem(key, JSON.stringify(items));
+    }
   };
 
   const [formData, setFormData] = useState({
@@ -66,69 +98,120 @@ export function CatalogModule() {
 
   useEffect(() => {
     loadCatalog();
-  }, []);
+  }, [selectedBranchId]); // Reload when branch changes
 
   useEffect(() => {
     const checkLowStock = async () => {
-      const { data: lowStockItems } = await supabase
-        .from('catalog')
-        .select('*')
-        .lte('stock', 2)
-        .eq('active', true);
+      // Only check low stock if we have items loaded and user is relevant
+      if (catalog.length === 0) return;
 
-      lowStockItems?.forEach(item => {
+      const lowStockItems = catalog.filter(item => (item.stock || 0) <= 2 && item.active);
+
+      const notifiedItems = getNotifiedItems();
+
+      lowStockItems.forEach(item => {
+        if (notifiedItems[item.id] === (item.stock || 0)) return;
+
         if (!hasExistingStockNotification(item.id, notifications)) {
           const notification = createLowStockNotification({
             id: item.id,
             model: item.model,
-            stock: item.stock,
+            stock: item.stock || 0,
             segment: item.segment,
             price: item.price_cash
           });
 
           if (notification) {
             addNotification(notification);
+            updateNotifiedItem(item.id, item.stock || 0);
           }
         }
       });
     };
 
     const interval = setInterval(checkLowStock, 1800000);
-
     return () => clearInterval(interval);
-  }, [notifications]);
+  }, [notifications, user?.id, catalog]);
 
   const loadCatalog = async () => {
-    const { data, error } = await supabase
+    setLoading(true);
+    // 1. Load Global Catalog
+    const { data: catalogData, error: catalogError } = await supabase
       .from('catalog')
       .select('*')
       .order('segment', { ascending: true });
 
-    if (!error && data) {
-      setCatalog(data);
-
-      data?.forEach(item => {
-        if (item.stock <= 2 && item.active) {
-          if (!hasExistingStockNotification(item.id, notifications)) {
-            const notification = createLowStockNotification({
-              id: item.id,
-              model: item.model,
-              stock: item.stock,
-              segment: item.segment,
-              price: item.price_cash
-            });
-
-            if (notification) {
-              addNotification(notification);
-            }
-          }
-        }
-      });
+    if (catalogError || !catalogData) {
+      console.error('Error loading catalog:', catalogError);
+      setLoading(false);
+      return;
     }
+
+    // 2. Load Local Inventory (if branch selected)
+    let inventoryMap: Record<string, { stock: number, test_drive_available: boolean, id: string }> = {};
+
+    if (selectedBranchId) {
+      const { data: stockData, error: stockError } = await supabase
+        .from('branch_catalog_stock')
+        .select('*')
+        .eq('branch_id', selectedBranchId);
+
+      if (!stockError && stockData) {
+        stockData.forEach(item => {
+          inventoryMap[item.catalog_item_id] = {
+            stock: item.stock,
+            test_drive_available: item.test_drive_available,
+            id: item.id
+          };
+        });
+      }
+    }
+
+    // 3. Merge Data
+    // Note: We keep ALL catalog items in state to allow "Import", but we might want to filter 
+    // what is SHOWN in the main grid/table to only "active in branch" items if desired, 
+    // OR show all but with 0 stock. 
+    // For consistency with Parts, let's show ALL but indicate stock is 0/Not carried if no record.
+    // However, the previous logic implies showing everything. 
+    // Let's attach the stock info.
+
+    // BUT! For "Import" feature to make sense (like in Parts), we should probably only show items
+    // that have a record in `branch_catalog_stock` OR are completely new?
+    // In Parts refactor we filtered `parts` to only `inventory_id`.
+    // Let's do the same here: Only show items that exist in this branch's inventory.
+
+    // Correction: Catalog is usually global visibility for sales agents. 
+    // If we hide items with 0 stock/no record, agents can't see the full lineup to sell/order.
+    // So for MOTOS, usually you want to see the whole catalog even if 0 stock.
+    // The "Import" concept is more about "Initializing stock record".
+
+    const mergedCatalog: CatalogItem[] = catalogData.map(item => ({
+      ...item,
+      // If record exists in branch, use its stock. If not, 0.
+      stock: inventoryMap[item.id]?.stock || 0,
+      test_drive_available: inventoryMap[item.id]?.test_drive_available || false,
+      // We add a flag to know if it's "linked" to branch or not
+      branch_stock_id: inventoryMap[item.id]?.id
+    }));
+
+    setCatalog(mergedCatalog);
     setLoading(false);
   };
 
+  // Filter for MAIN VIEW: Show all active catalog items (unlike parts where we might only want inventory)
+  // OR do we want strict separation? 
+  // Requirement: "Importar desde Catálogo". This implies they are not in the main list initially?
+  // If I show ALL, then "Import" button is redundant unless "Import" just means "Add stock record".
+  // Let's assume we want to see everything because agents need to sell Pre-Order.
+  // So "Import" might not be as critical for VIEWING, but for MANAGING stock it is.
+  // Actually, let's stick to the Parts pattern: Filter main view by "items that have a stock record (even 0)".
+  // This keeps the UI clean and branch-specific.
+
   const filteredCatalog = catalog.filter(item => {
+    // Only show if it has a branch_stock_id (meaning it's "in" this branch) OR if we are viewing as Global Admin (maybe?)
+    // For now, strict branch view:
+    if (selectedBranchId && !item.branch_stock_id) return false;
+
     const matchesSegment = filterSegment === 'all' || item.segment === filterSegment;
     const matchesSearch = searchTerm === '' ||
       item.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -136,25 +219,51 @@ export function CatalogModule() {
     return matchesSegment && matchesSearch && item.active;
   });
 
+  // Items eligible for import (Global Catalog items NOT in current branch)
+  const importableCatalog = catalog.filter(item => !item.branch_stock_id && (
+    item.model.toLowerCase().includes(searchTermImport.toLowerCase()) ||
+    item.segment.toLowerCase().includes(searchTermImport.toLowerCase())
+  ));
+
+
+  const handleImportCatalogItem = async (catalogItemId: string) => {
+    if (!selectedBranchId) return;
+    try {
+      const { error } = await supabase.from('branch_catalog_stock').insert({
+        branch_id: selectedBranchId,
+        catalog_item_id: catalogItemId,
+        stock: 0,
+        test_drive_available: false
+      });
+
+      if (error) throw error;
+      loadCatalog();
+      // Optionally keep modal open
+    } catch (err) {
+      console.error("Error importing:", err);
+      alert("Error al importar el modelo.");
+    }
+  };
+
   const handleOpenModal = (item?: CatalogItem) => {
     if (item) {
       setEditingItem(item);
       setFormData({
         segment: item.segment,
         model: item.model,
-        price_cash: item.price_cash || '',
-        stock: item.stock || '',
-        test_drive_available: item.test_drive_available,
+        price_cash: item.price_cash.toString(),
+        stock: (item.stock || 0).toString(),
+        test_drive_available: item.test_drive_available || false,
         year: item.year,
         color_options: item.color_options.join(', '),
-        engine_cc: item.engine_cc || '',
+        engine_cc: item.engine_cc?.toString() || '',
         engine_type: item.engine_type || '',
         max_power: item.max_power || '',
         max_torque: item.max_torque || '',
         transmission: item.transmission || '',
-        fuel_capacity: item.fuel_capacity || '',
-        weight: item.weight || '',
-        seat_height: item.seat_height || '',
+        fuel_capacity: item.fuel_capacity?.toString() || '',
+        weight: item.weight?.toString() || '',
+        seat_height: item.seat_height?.toString() || '',
         abs: item.abs,
         traction_control: item.traction_control,
         riding_modes: item.riding_modes.join(', '),
@@ -171,7 +280,7 @@ export function CatalogModule() {
         segment: 'Deportiva',
         model: '',
         price_cash: '',
-        stock: '',
+        stock: '', // Will be 0 init
         test_drive_available: false,
         year: new Date().getFullYear(),
         color_options: '',
@@ -265,12 +374,12 @@ export function CatalogModule() {
       }
     }
 
-    const dataToSubmit = {
+    const globalData = {
       segment: formData.segment,
       model: formData.model,
       price_cash: formData.price_cash ? parseFloat(formData.price_cash) : 0,
-      stock: formData.stock ? parseInt(formData.stock) : 0,
-      test_drive_available: formData.test_drive_available,
+      // stock removed from global
+      // test_drive_available removed from global
       year: formData.year,
       color_options: formData.color_options.split(',').map(c => c.trim()).filter(c => c),
       engine_cc: formData.engine_cc ? parseInt(formData.engine_cc) : null,
@@ -292,46 +401,56 @@ export function CatalogModule() {
       updated_at: new Date().toISOString()
     };
 
+    let catalogId = editingItem?.id;
+
     if (editingItem) {
+      // Update Global Catalog
       const { error } = await supabase
         .from('catalog')
-        .update(dataToSubmit)
+        .update(globalData)
         .eq('id', editingItem.id);
 
-      if (!error) {
-        if (dataToSubmit.stock === 0) {
-          const { data: item } = await supabase
-            .from('catalog')
-            .select('id, model, segment')
-            .eq('id', editingItem.id)
-            .single();
-
-          if (item) {
-            const notification = createOutOfStockNotification({
-              id: item.id,
-              model: item.model,
-              segment: item.segment
-            });
-
-            addNotification(notification);
-          }
-        }
-
-        setSuccessMessage('Modelo actualizado exitosamente');
-        setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+      if (error) {
+        alert("Error actualizando catálogo global");
+        return;
       }
     } else {
-      const { error } = await supabase
+      // Create in Global Catalog
+      const { data: newItem, error } = await supabase
         .from('catalog')
-        .insert([dataToSubmit]);
+        .insert([globalData])
+        .select()
+        .single();
 
-      if (!error) {
-        setSuccessMessage('Modelo registrado exitosamente');
-        setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+      if (error || !newItem) {
+        alert("Error creando modelo");
+        return;
       }
+      catalogId = newItem.id;
     }
+
+    // Update Local Branch Stock
+    if (selectedBranchId && catalogId) {
+      // Upsert stock record
+      const stockData = {
+        branch_id: selectedBranchId,
+        catalog_item_id: catalogId,
+        stock: formData.stock ? parseInt(formData.stock) : 0,
+        test_drive_available: formData.test_drive_available,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error: stockError } = await supabase
+        .from('branch_catalog_stock')
+        .upsert(stockData, { onConflict: 'branch_id, catalog_item_id' }); // Requires unique constaint
+
+      if (stockError) console.error("Error updating branch stock:", stockError);
+    }
+
+
+    setSuccessMessage(editingItem ? 'Modelo actualizado exitosamente' : 'Modelo registrado exitosamente');
+    setShowSuccess(true);
+    setTimeout(() => setShowSuccess(false), 3000);
 
     setShowModal(false);
     setEditingItem(null);
@@ -349,6 +468,7 @@ export function CatalogModule() {
       .eq('id', id);
 
     if (!error) {
+
       setSuccessMessage('Modelo eliminado permanentemente');
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
@@ -359,28 +479,28 @@ export function CatalogModule() {
     }
   };
 
- const getSegmentColor = (segment: string) => {
-  switch(segment) {
-    case 'Deportiva': return 'bg-red-100 text-red-800 border-red-300';
-    case 'Naked': return 'bg-blue-100 text-blue-800 border-blue-300';
-    case 'Doble Propósito': return 'bg-green-100 text-green-800 border-green-300';
-    case 'Scooter': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-    case 'Trabajo': return 'bg-amber-100 text-amber-800 border-amber-300';
-    case 'Street': return 'bg-purple-100 text-purple-800 border-purple-300';
-    case 'Cross/Country': return 'bg-orange-100 text-orange-800 border-orange-300';
-    case 'Carros': return 'bg-indigo-100 text-indigo-800 border-indigo-300';
-    case 'Cuatrimoto/ATV: Deportivas': return 'bg-pink-100 text-pink-800 border-pink-300';
-    case 'Cuatrimoto/ATV: Utilitarios': return 'bg-teal-100 text-teal-800 border-teal-300';
-    case 'Nuevos lanzamientos': return 'bg-emerald-100 text-emerald-800 border-emerald-300';
-    default: return 'bg-gray-100 text-gray-800 border-gray-300';
-  }
-};
+  const getSegmentColor = (segment: string) => {
+    switch (segment) {
+      case 'Deportiva': return 'bg-red-100 text-red-800 border-red-300';
+      case 'Naked': return 'bg-blue-100 text-blue-800 border-blue-300';
+      case 'Doble Propósito': return 'bg-green-100 text-green-800 border-green-300';
+      case 'Scooter': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+      case 'Trabajo': return 'bg-amber-100 text-amber-800 border-amber-300';
+      case 'Street': return 'bg-purple-100 text-purple-800 border-purple-300';
+      case 'Cross/Country': return 'bg-orange-100 text-orange-800 border-orange-300';
+      case 'Carros': return 'bg-indigo-100 text-indigo-800 border-indigo-300';
+      case 'Cuatrimoto/ATV: Deportivas': return 'bg-pink-100 text-pink-800 border-pink-300';
+      case 'Cuatrimoto/ATV: Utilitarios': return 'bg-teal-100 text-teal-800 border-teal-300';
+      case 'Nuevos lanzamientos': return 'bg-emerald-100 text-emerald-800 border-emerald-300';
+      default: return 'bg-gray-100 text-gray-800 border-gray-300';
+    }
+  };
 
   const stats = {
     total: catalog.filter(c => c.active).length,
-    withTestDrive: catalog.filter(c => c.active && c.test_drive_available).length,
-    totalStock: catalog.filter(c => c.active).reduce((acc, c) => acc + c.stock, 0),
-    avgPrice: Math.round(catalog.filter(c => c.active).reduce((acc, c) => acc + c.price_cash, 0) / catalog.filter(c => c.active).length)
+    withTestDrive: catalog.filter(c => c.active && c.test_drive_available === true).length,
+    totalStock: catalog.filter(c => c.active).reduce((acc, c) => acc + (c.stock || 0), 0),
+    avgPrice: Math.round(catalog.filter(c => c.active).reduce((acc, c) => acc + c.price_cash, 0) / (catalog.filter(c => c.active).length || 1))
   };
 
   if (loading) {
@@ -403,11 +523,10 @@ export function CatalogModule() {
         <div className="flex border-b border-gray-200">
           <button
             onClick={() => setMainView('motorcycles')}
-            className={`flex-1 px-6 py-4 font-semibold transition-colors ${
-              mainView === 'motorcycles'
-                ? 'bg-orange-50 text-orange-700 border-b-2 border-orange-600'
-                : 'text-gray-600 hover:bg-gray-50'
-            }`}
+            className={`flex-1 px-6 py-4 font-semibold transition-colors ${mainView === 'motorcycles'
+              ? 'bg-orange-50 text-orange-700 border-b-2 border-orange-600'
+              : 'text-gray-600 hover:bg-gray-50'
+              }`}
           >
             <div className="flex items-center justify-center gap-2">
               <Bike className="w-5 h-5" />
@@ -416,11 +535,10 @@ export function CatalogModule() {
           </button>
           <button
             onClick={() => setMainView('parts')}
-            className={`flex-1 px-6 py-4 font-semibold transition-colors ${
-              mainView === 'parts'
-                ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600'
-                : 'text-gray-600 hover:bg-gray-50'
-            }`}
+            className={`flex-1 px-6 py-4 font-semibold transition-colors ${mainView === 'parts'
+              ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600'
+              : 'text-gray-600 hover:bg-gray-50'
+              }`}
           >
             <div className="flex items-center justify-center gap-2">
               <Wrench className="w-5 h-5" />
@@ -435,7 +553,14 @@ export function CatalogModule() {
           ) : (
             <div className="space-y-6">
               {canEditCatalog(user?.role as Role) && (
-                <div className="flex items-center justify-end">
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    onClick={() => setShowImportModal(true)}
+                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-semibold transition-all"
+                  >
+                    <Package className="w-5 h-5" />
+                    Importar del Catálogo
+                  </button>
                   <button
                     onClick={() => handleOpenModal()}
                     className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-semibold transition-all"
@@ -446,330 +571,407 @@ export function CatalogModule() {
                 </div>
               )}
 
-      {showSuccess && (
-        <div className="bg-green-100 border-2 border-green-400 text-green-800 px-4 py-3 rounded-lg flex items-center gap-3">
-          <TrendingUp className="w-5 h-5" />
-          <span className="font-semibold">{successMessage}</span>
-        </div>
-      )}
+              {/* Modal de Importación */}
+              {showImportModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+                    <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl">
+                      <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                        <Package className="w-6 h-6 text-indigo-600" />
+                        Importar del Catálogo Global
+                      </h3>
+                      <button
+                        onClick={() => setShowImportModal(false)}
+                        className="text-gray-400 hover:text-gray-600 transition-colors"
+                      >
+                        <X className="w-6 h-6" />
+                      </button>
+                    </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg shadow-lg p-6 text-white">
-          <div className="flex items-center justify-between mb-2">
-            <Bike className="w-8 h-8 opacity-80" />
-            <div className="text-right">
-              <div className="text-3xl font-bold">{stats.total}</div>
-              <div className="text-xs opacity-90 mt-1">modelos</div>
-            </div>
-          </div>
-          <div className="text-sm font-semibold mt-2">Catálogo Activo</div>
-        </div>
+                    <div className="p-6 border-b border-gray-100">
+                      <div className="relative">
+                        <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Buscar modelo, segmento..."
+                          value={searchTermImport}
+                          onChange={(e) => setSearchTermImport(e.target.value)}
+                          className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:border-indigo-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
 
-        <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white">
-          <div className="flex items-center justify-between mb-2">
-            <CheckCircle className="w-8 h-8 opacity-80" />
-            <div className="text-right">
-              <div className="text-3xl font-bold">{stats.withTestDrive}</div>
-              <div className="text-xs opacity-90 mt-1">disponibles</div>
-            </div>
-          </div>
-          <div className="text-sm font-semibold mt-2">Prueba de Manejo</div>
-        </div>
+                    <div className="flex-1 overflow-y-auto p-6">
+                      {importableCatalog.length === 0 ? (
+                        <div className="text-center py-12 text-gray-500">
+                          <Bike className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                          <p>No hay modelos disponibles para importar con esa búsqueda.</p>
+                          <p className="text-sm mt-1">(O ya tienes todos en tu inventario)</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {importableCatalog.map(item => (
+                            <div key={item.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow flex justify-between items-center group">
+                              <div className="flex items-center gap-3">
+                                {item.image_url ? (
+                                  <img src={item.image_url} alt={item.model} className="w-16 h-16 object-cover rounded-md" />
+                                ) : (
+                                  <div className="w-16 h-16 bg-gray-100 rounded-md flex items-center justify-center">
+                                    <Bike className="w-8 h-8 text-gray-400" />
+                                  </div>
+                                )}
+                                <div>
+                                  <div className="font-bold text-gray-800">{item.model}</div>
+                                  <div className="text-sm text-gray-500">{item.year} - {item.segment}</div>
+                                  <div className="text-xs text-indigo-600 font-semibold mt-1">
+                                    ${item.price_cash.toLocaleString('es-MX')}
+                                  </div>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => handleImportCatalogItem(item.id)}
+                                className="bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg text-sm font-semibold opacity-0 group-hover:opacity-100 transition-opacity hover:bg-indigo-200"
+                              >
+                                + Importar
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
 
-        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white">
-          <div className="flex items-center justify-between mb-2">
-            <Package className="w-8 h-8 opacity-80" />
-            <div className="text-right">
-              <div className="text-3xl font-bold">{stats.totalStock}</div>
-              <div className="text-xs opacity-90 mt-1">unidades</div>
-            </div>
-          </div>
-          <div className="text-sm font-semibold mt-2">Stock Total</div>
-        </div>
+                    <div className="p-6 border-t border-gray-200 bg-gray-50 rounded-b-xl flex justify-end">
+                      <button
+                        onClick={() => setShowImportModal(false)}
+                        className="px-4 py-2 text-gray-600 font-semibold hover:bg-gray-200 rounded-lg transition-colors"
+                      >
+                        Cerrar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-lg p-6 text-white">
-          <div className="flex items-center justify-between mb-2">
-            <DollarSign className="w-8 h-8 opacity-80" />
-            <div className="text-right">
-              <div className="text-2xl font-bold">${(stats.avgPrice / 1000).toFixed(0)}K</div>
-              <div className="text-xs opacity-90 mt-1">promedio</div>
-            </div>
-          </div>
-          <div className="text-sm font-semibold mt-2">Precio Promedio</div>
-        </div>
-      </div>
+              {showSuccess && (
+                <div className="bg-green-100 border-2 border-green-400 text-green-800 px-4 py-3 rounded-lg flex items-center gap-3">
+                  <TrendingUp className="w-5 h-5" />
+                  <span className="font-semibold">{successMessage}</span>
+                </div>
+              )}
 
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <div className="flex flex-col md:flex-row gap-4 mb-6">
-          <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar por modelo o segmento..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
-              />
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setFilterSegment('all')}
-              className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-                filterSegment === 'all'
-                  ? 'bg-orange-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Todos
-            </button>
-            <button
-              onClick={() => setViewMode(viewMode === 'grid' ? 'table' : 'grid')}
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition-all"
-            >
-              {viewMode === 'grid' ? 'Vista Tabla' : 'Vista Tarjetas'}
-            </button>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2 mb-6">
-          {['Deportiva', 'Naked', 'Doble Propósito', 'Scooter', 'Trabajo', 'Street', 'Cross/Country', 'Carros', 'Cuatrimoto/ATV: Deportivas', 'Cuatrimoto/ATV: Utilitarios', 'Nuevos lanzamientos'].map((segment) => (
-            <button
-              key={segment}
-              onClick={() => setFilterSegment(segment as FilterSegment)}
-              className={`px-3 py-1 rounded-full text-xs font-bold border-2 whitespace-nowrap transition-all ${
-                filterSegment === segment
-                  ? getSegmentColor(segment)
-                  : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              {segment}
-            </button>
-          ))}
-        </div>
-
-        {viewMode === 'grid' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredCatalog.map((item) => (
-              <div
-                key={item.id}
-                className="bg-white rounded-xl shadow-md border-2 border-gray-200 hover:shadow-xl transition-all overflow-hidden"
-              >
-                <div className="bg-gradient-to-br from-gray-100 to-gray-200 h-40 flex items-center justify-center">
-                  {item.image_url ? (
-                    <img src={item.image_url} alt={item.model} className="h-full w-full object-cover" />
-                  ) : (
-                    <Bike className="w-20 h-20 text-gray-400" />
-                  )}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg shadow-lg p-6 text-white">
+                  <div className="flex items-center justify-between mb-2">
+                    <Bike className="w-8 h-8 opacity-80" />
+                    <div className="text-right">
+                      <div className="text-3xl font-bold">{stats.total}</div>
+                      <div className="text-xs opacity-90 mt-1">modelos</div>
+                    </div>
+                  </div>
+                  <div className="text-sm font-semibold mt-2">Catálogo Activo</div>
                 </div>
 
-                <div className="p-5">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <span className={`inline-block px-2 py-1 text-xs font-bold rounded-full border ${getSegmentColor(item.segment)}`}>
-                        {item.segment}
-                      </span>
-                      <h3 className="text-xl font-bold text-gray-800 mt-2">{item.model}</h3>
-                      <p className="text-sm text-gray-600 mt-1">{item.year}</p>
+                <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white">
+                  <div className="flex items-center justify-between mb-2">
+                    <CheckCircle className="w-8 h-8 opacity-80" />
+                    <div className="text-right">
+                      <div className="text-3xl font-bold">{stats.withTestDrive}</div>
+                      <div className="text-xs opacity-90 mt-1">disponibles</div>
                     </div>
                   </div>
+                  <div className="text-sm font-semibold mt-2">Prueba de Manejo</div>
+                </div>
 
-                  <div className="space-y-2 mb-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Precio</span>
-                      <span className="text-lg font-bold text-green-600">
-                        ${item.price_cash.toLocaleString('es-MX')}
-                      </span>
+                <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white">
+                  <div className="flex items-center justify-between mb-2">
+                    <Package className="w-8 h-8 opacity-80" />
+                    <div className="text-right">
+                      <div className="text-3xl font-bold">{stats.totalStock}</div>
+                      <div className="text-xs opacity-90 mt-1">unidades</div>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Stock</span>
-                      <span className={`text-sm font-bold ${
-                        item.stock > 3 ? 'text-green-600' : item.stock > 0 ? 'text-yellow-600' : 'text-red-600'
-                      }`}>
-                        {item.stock} unidades
-                      </span>
+                  </div>
+                  <div className="text-sm font-semibold mt-2">Stock Total</div>
+                </div>
+
+                <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-lg p-6 text-white">
+                  <div className="flex items-center justify-between mb-2">
+                    <DollarSign className="w-8 h-8 opacity-80" />
+                    <div className="text-right">
+                      <div className="text-2xl font-bold">${(stats.avgPrice / 1000).toFixed(0)}K</div>
+                      <div className="text-xs opacity-90 mt-1">promedio</div>
                     </div>
-                    {item.engine_cc && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-600">Motor</span>
-                        <span className="text-sm font-semibold text-gray-800">{item.engine_cc} cc</span>
-                      </div>
-                    )}
                   </div>
-
-                  <div className="flex items-center gap-2 mb-4">
-                    {item.test_drive_available ? (
-                      <>
-                        <CheckCircle className="w-4 h-4 text-green-600" />
-                        <span className="text-xs font-medium text-green-700">Prueba disponible</span>
-                      </>
-                    ) : (
-                      <>
-                        <XCircle className="w-4 h-4 text-gray-400" />
-                        <span className="text-xs text-gray-500">Sin prueba</span>
-                      </>
-                    )}
-                  </div>
-
-                  {item.color_options.length > 0 && (
-                    <div className="mb-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Palette className="w-4 h-4 text-gray-600" />
-                        <span className="text-xs font-semibold text-gray-700">Colores</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {item.color_options.slice(0, 3).map((color, idx) => (
-                          <span key={idx} className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-700">
-                            {color}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex gap-2 pt-4 border-t border-gray-200">
-                    <button
-                      onClick={() => {
-                        setSelectedItem(item);
-                        setShowDetailsModal(true);
-                      }}
-                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-all"
-                    >
-                      <Eye className="w-4 h-4" />
-                      Ver
-                    </button>
-                    {canEditCatalog(user?.role as Role) && (
-                      <>
-                        <button
-                          onClick={() => handleOpenModal(item)}
-                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-semibold transition-all"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                          Editar
-                        </button>
-                        <button
-                          onClick={() => handleDelete(item.id)}
-                          className="flex items-center justify-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </>
-                    )}
-                  </div>
+                  <div className="text-sm font-semibold mt-2">Precio Promedio</div>
                 </div>
               </div>
-            ))}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gradient-to-r from-orange-50 to-orange-100 border-b-2 border-orange-200">
-                <tr>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Segmento</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Modelo</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Precio</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Stock</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Motor</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Prueba</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredCatalog.map((item) => (
-                  <tr key={item.id} className="hover:bg-orange-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs font-bold rounded-full border ${getSegmentColor(item.segment)}`}>
-                        {item.segment}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-bold text-gray-900">{item.model}</div>
-                      <div className="text-xs text-gray-500">{item.year}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-semibold text-green-600">
-                        ${item.price_cash.toLocaleString('es-MX')}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`text-sm font-bold ${
-                        item.stock > 3 ? 'text-green-600' : item.stock > 0 ? 'text-yellow-600' : 'text-red-600'
-                      }`}>
-                        {item.stock}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-semibold text-gray-700">{item.engine_cc} cc</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {item.test_drive_available ? (
-                        <CheckCircle className="w-5 h-5 text-green-600" />
-                      ) : (
-                        <XCircle className="w-5 h-5 text-gray-400" />
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => {
-                            setSelectedItem(item);
-                            setShowDetailsModal(true);
-                          }}
-                          className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        {canEditCatalog(user?.role as Role) && (
-                          <>
-                            <button
-                              onClick={() => handleOpenModal(item)}
-                              className="p-2 text-orange-600 hover:bg-orange-50 rounded transition-colors"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(item.id)}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
 
-      <div className="bg-gradient-to-br from-orange-50 to-yellow-50 rounded-lg shadow-md p-6 border-2 border-orange-200">
-        <h3 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
-          <FileText className="w-5 h-5 text-orange-600" />
-          Características del Catálogo
-        </h3>
-        <ul className="space-y-2 text-sm text-gray-700">
-          <li className="flex items-start gap-2">
-            <span className="text-orange-600 font-bold">•</span>
-            <span>Información centralizada de todos los modelos con especificaciones técnicas completas</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-orange-600 font-bold">•</span>
-            <span>Control de disponibilidad de prueba de manejo por modelo</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-orange-600 font-bold">•</span>
-            <span>La clasificación por segmento facilita la navegación y permite filtros inteligentes</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-orange-600 font-bold">•</span>
-            <span>Las fichas técnicas centralizadas reemplazan PDFs dispersos, permitiendo acceso rápido a datos</span>
-          </li>
-        </ul>
-      </div>
+              <div className="bg-white rounded-lg shadow-md p-6">
+                <div className="flex flex-col md:flex-row gap-4 mb-6">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Buscar por modelo o segmento..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setFilterSegment('all')}
+                      className={`px-4 py-2 rounded-lg font-semibold transition-all ${filterSegment === 'all'
+                        ? 'bg-orange-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                    >
+                      Todos
+                    </button>
+                    <button
+                      onClick={() => setViewMode(viewMode === 'grid' ? 'table' : 'grid')}
+                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition-all"
+                    >
+                      {viewMode === 'grid' ? 'Vista Tabla' : 'Vista Tarjetas'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 mb-6">
+                  {['Deportiva', 'Naked', 'Doble Propósito', 'Scooter', 'Trabajo', 'Street', 'Cross/Country', 'Carros', 'Cuatrimoto/ATV: Deportivas', 'Cuatrimoto/ATV: Utilitarios', 'Nuevos lanzamientos'].map((segment) => (
+                    <button
+                      key={segment}
+                      onClick={() => setFilterSegment(segment as FilterSegment)}
+                      className={`px-3 py-1 rounded-full text-xs font-bold border-2 whitespace-nowrap transition-all ${filterSegment === segment
+                        ? getSegmentColor(segment)
+                        : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                        }`}
+                    >
+                      {segment}
+                    </button>
+                  ))}
+                </div>
+
+                {viewMode === 'grid' ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredCatalog.map((item) => (
+                      <div
+                        key={item.id}
+                        className="bg-white rounded-xl shadow-md border-2 border-gray-200 hover:shadow-xl transition-all overflow-hidden"
+                      >
+                        <div className="bg-gradient-to-br from-gray-100 to-gray-200 h-40 flex items-center justify-center">
+                          {item.image_url ? (
+                            <img src={item.image_url} alt={item.model} className="h-full w-full object-cover" />
+                          ) : (
+                            <Bike className="w-20 h-20 text-gray-400" />
+                          )}
+                        </div>
+
+                        <div className="p-5">
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex-1">
+                              <span className={`inline-block px-2 py-1 text-xs font-bold rounded-full border ${getSegmentColor(item.segment)}`}>
+                                {item.segment}
+                              </span>
+                              <h3 className="text-xl font-bold text-gray-800 mt-2">{item.model}</h3>
+                              <p className="text-sm text-gray-600 mt-1">{item.year}</p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2 mb-4">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-gray-600">Precio</span>
+                              <span className="text-lg font-bold text-green-600">
+                                ${item.price_cash.toLocaleString('es-MX')}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-gray-600">Stock</span>
+                              <span className={`text-sm font-bold ${(item.stock || 0) > 3 ? 'text-green-600' : (item.stock || 0) > 0 ? 'text-yellow-600' : 'text-red-600'
+                                }`}>
+                                {item.stock || 0} unidades
+                              </span>
+                            </div>
+                            {item.engine_cc && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm text-gray-600">Motor</span>
+                                <span className="text-sm font-semibold text-gray-800">{item.engine_cc} cc</span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 mb-4">
+                            {item.test_drive_available ? (
+                              <>
+                                <CheckCircle className="w-4 h-4 text-green-600" />
+                                <span className="text-xs font-medium text-green-700">Prueba disponible</span>
+                              </>
+                            ) : (
+                              <>
+                                <XCircle className="w-4 h-4 text-gray-400" />
+                                <span className="text-xs text-gray-500">Sin prueba</span>
+                              </>
+                            )}
+                          </div>
+
+                          {item.color_options.length > 0 && (
+                            <div className="mb-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Palette className="w-4 h-4 text-gray-600" />
+                                <span className="text-xs font-semibold text-gray-700">Colores</span>
+                              </div>
+                              <div className="flex flex-wrap gap-1">
+                                {item.color_options.slice(0, 3).map((color, idx) => (
+                                  <span key={idx} className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-700">
+                                    {color}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex gap-2 pt-4 border-t border-gray-200">
+                            <button
+                              onClick={() => {
+                                setSelectedItem(item);
+                                setShowDetailsModal(true);
+                              }}
+                              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-all"
+                            >
+                              <Eye className="w-4 h-4" />
+                              Ver
+                            </button>
+                            {canEditCatalog(user?.role as Role) && (
+                              <>
+                                <button
+                                  onClick={() => handleOpenModal(item)}
+                                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-semibold transition-all"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                  Editar
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(item.id)}
+                                  className="flex items-center justify-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold transition-all"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gradient-to-r from-orange-50 to-orange-100 border-b-2 border-orange-200">
+                        <tr>
+                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Segmento</th>
+                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Modelo</th>
+                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Precio</th>
+                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Stock</th>
+                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Motor</th>
+                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Prueba</th>
+                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {filteredCatalog.map((item) => (
+                          <tr key={item.id} className="hover:bg-orange-50 transition-colors">
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`px-2 py-1 text-xs font-bold rounded-full border ${getSegmentColor(item.segment)}`}>
+                                {item.segment}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-bold text-gray-900">{item.model}</div>
+                              <div className="text-xs text-gray-500">{item.year}</div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-semibold text-green-600">
+                                ${item.price_cash.toLocaleString('es-MX')}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`text-sm font-bold ${(item.stock || 0) > 3 ? 'text-green-600' : (item.stock || 0) > 0 ? 'text-yellow-600' : 'text-red-600'
+                                }`}>
+                                {item.stock || 0}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-semibold text-gray-700">{item.engine_cc} cc</div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {item.test_drive_available ? (
+                                <CheckCircle className="w-5 h-5 text-green-600" />
+                              ) : (
+                                <XCircle className="w-5 h-5 text-gray-400" />
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => {
+                                    setSelectedItem(item);
+                                    setShowDetailsModal(true);
+                                  }}
+                                  className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                                {canEditCatalog(user?.role as Role) && (
+                                  <>
+                                    <button
+                                      onClick={() => handleOpenModal(item)}
+                                      className="p-2 text-orange-600 hover:bg-orange-50 rounded transition-colors"
+                                    >
+                                      <Edit2 className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDelete(item.id)}
+                                      className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-gradient-to-br from-orange-50 to-yellow-50 rounded-lg shadow-md p-6 border-2 border-orange-200">
+                <h3 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-orange-600" />
+                  Características del Catálogo
+                </h3>
+                <ul className="space-y-2 text-sm text-gray-700">
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-600 font-bold">•</span>
+                    <span>Información centralizada de todos los modelos con especificaciones técnicas completas</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-600 font-bold">•</span>
+                    <span>Control de disponibilidad de prueba de manejo por modelo</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-600 font-bold">•</span>
+                    <span>La clasificación por segmento facilita la navegación y permite filtros inteligentes</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-600 font-bold">•</span>
+                    <span>Las fichas técnicas centralizadas reemplazan PDFs dispersos, permitiendo acceso rápido a datos</span>
+                  </li>
+                </ul>
+              </div>
             </div>
           )}
         </div>
@@ -1014,11 +1216,10 @@ export function CatalogModule() {
                         />
                         <label
                           htmlFor="image-upload"
-                          className={`flex items-center justify-center gap-2 w-full px-4 py-2 border-2 border-dashed rounded-lg cursor-pointer transition-all ${
-                            formData.image_url
-                              ? 'border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed'
-                              : 'border-orange-400 hover:border-orange-500 hover:bg-orange-50 text-orange-700'
-                          }`}
+                          className={`flex items-center justify-center gap-2 w-full px-4 py-2 border-2 border-dashed rounded-lg cursor-pointer transition-all ${formData.image_url
+                            ? 'border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : 'border-orange-400 hover:border-orange-500 hover:bg-orange-50 text-orange-700'
+                            }`}
                         >
                           <Upload className="w-5 h-5" />
                           <span className="text-sm font-medium">
@@ -1109,11 +1310,10 @@ export function CatalogModule() {
               <button
                 onClick={handleSubmit}
                 disabled={uploadingImage}
-                className={`flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all ${
-                  uploadingImage
-                    ? 'bg-gray-400 cursor-not-allowed'
-                    : 'bg-orange-600 hover:bg-orange-700 text-white'
-                }`}
+                className={`flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all ${uploadingImage
+                  ? 'bg-gray-400 cursor-not-allowed'
+                  : 'bg-orange-600 hover:bg-orange-700 text-white'
+                  }`}
               >
                 {uploadingImage ? (
                   <>

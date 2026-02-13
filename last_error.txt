@@ -1,0 +1,67 @@
+[2026-02-10T23:54:46.392Z] Starting campaign send for ID: 7d0fca95-fa73-4b16-8a2f-35fcdc8208d3
+[2026-02-10T23:54:47.554Z] Audience filters: {"status":"Rojo","timeframe":"Inmediato"}
+[2026-02-10T23:54:47.738Z] Initial recipients count: 1
+[2026-02-10T23:54:47.739Z] Final recipients count: 1
+[2026-02-10T23:54:47.911Z] Attempting send to 524432138917 with 1 params...
+[2026-02-10T23:54:48.408Z] First attempt failed to 524432138917: (#132001) Template name does not exist in the translation
+[2026-02-10T23:54:48.411Z] Retrying 524432138917 with 0 params...
+[2026-02-10T23:54:48.677Z] Retry FAILED to 524432138917: (#132001) Template name does not exist in the translation
+[2026-02-11T00:32:09.142Z] Starting campaign send for ID: 7d0fca95-fa73-4b16-8a2f-35fcdc8208d3
+[2026-02-11T00:32:09.891Z] Audience filters: {"status":"Rojo","timeframe":"Inmediato"}
+[2026-02-11T00:32:10.063Z] Initial recipients count: 1
+[2026-02-11T00:32:10.065Z] Final recipients count: 1
+[2026-02-11T00:32:10.226Z] Attempting send to 524432138917 with 1 params...
+[2026-02-11T00:32:10.721Z] First attempt failed to 524432138917: (#132001) Template name does not exist in the translation
+[2026-02-11T00:32:10.722Z] Retrying 524432138917 with 0 params...
+[2026-02-11T00:32:10.951Z] Retry FAILED to 524432138917: (#132001) Template name does not exist in the translation
+[2026-02-11T00:34:16.344Z] Starting campaign send for ID: 7d0fca95-fa73-4b16-8a2f-35fcdc8208d3
+[2026-02-11T00:34:17.135Z] Audience filters: {"status":"Rojo","timeframe":"Inmediato"}
+[2026-02-11T00:34:17.282Z] Initial recipients count: 1
+[2026-02-11T00:34:17.287Z] Final recipients count: 1
+[2026-02-11T00:34:17.451Z] Attempting send to 524432138917 with 1 params...
+[2026-02-11T00:34:17.860Z] First attempt failed to 524432138917: (#132001) Template name does not exist in the translation
+[2026-02-11T00:34:17.863Z] Retrying 524432138917 with 0 params...
+[2026-02-11T00:34:18.078Z] Retry FAILED to 524432138917: (#132001) Template name does not exist in the translation
+[2026-02-11T00:35:05.235Z] Starting campaign send for ID: 7d0fca95-fa73-4b16-8a2f-35fcdc8208d3
+[2026-02-11T00:35:05.858Z] Audience filters: {"status":"Rojo","timeframe":"Inmediato"}
+[2026-02-11T00:35:06.029Z] Initial recipients count: 1
+[2026-02-11T00:35:06.038Z] Final recipients count: 1
+[2026-02-11T00:35:06.204Z] Attempting send to 524432138917 with 1 params...
+[2026-02-11T00:35:06.627Z] First attempt failed to 524432138917: (#132001) Template name does not exist in the translation
+[2026-02-11T00:35:06.630Z] Retrying 524432138917 with 0 params...
+[2026-02-11T00:35:06.865Z] Retry FAILED to 524432138917: (#132001) Template name does not exist in the translation
+[2026-02-11T23:26:49.203Z] Starting campaign send for ID: 7d0fca95-fa73-4b16-8a2f-35fcdc8208d3
+[2026-02-11T23:26:49.937Z] Audience filters: {"status":"Rojo","timeframe":"Inmediato"}
+[2026-02-11T23:26:50.104Z] Initial recipients count: 1
+[2026-02-11T23:26:50.107Z] Final recipients count: 1
+[2026-02-11T23:26:50.270Z] Attempting send to 524432138917 with 1 params...
+[2026-02-11T23:26:50.894Z] First attempt failed to 524432138917: (#132001) Template name does not exist in the translation
+[2026-02-11T23:26:50.895Z] Retrying 524432138917 with 0 params...
+[2026-02-11T23:26:51.140Z] Retry FAILED (0 params) to 524432138917: (#132001) Template name does not exist in the translation
+[2026-02-11T23:41:52.166Z] Starting campaign send for ID: 9e525fdf-a660-4c66-8799-4620fd4ba0dc
+[2026-02-11T23:41:52.792Z] Audience filters: {"status":"Rojo","timeframe":"Inmediato"}
+[2026-02-11T23:41:52.942Z] Initial recipients count: 1
+[2026-02-11T23:41:52.944Z] Final recipients count: 1
+[2026-02-11T23:41:53.088Z] Attempting send to 524432138917 with 1 params...
+[2026-02-11T23:41:53.633Z] First attempt failed to 524432138917: (#132001) Template name does not exist in the translation
+[2026-02-11T23:41:53.635Z] Retrying 524432138917 with 0 params...
+[2026-02-11T23:41:53.858Z] Retry FAILED (0 params) to 524432138917: (#132001) Template name does not exist in the translation
+[2026-02-11T23:44:20.010Z] Starting campaign send for ID: 85eab2a8-5071-4a41-823c-e87ecc47b0eb
+[2026-02-11T23:44:20.990Z] Audience filters: {"status":"Rojo","timeframe":"Inmediato"}
+[2026-02-11T23:44:21.129Z] Initial recipients count: 1
+[2026-02-11T23:44:21.130Z] Final recipients count: 1
+[2026-02-11T23:44:21.273Z] Attempting send to 524432138917 with 1 params...
+[2026-02-11T23:44:22.135Z] SUCCESS sending to 524432138917. WAMID: wamid.HBgNNTIxNDQzMjEzODkxNxUCABEYEkZBNjExMTQ4MTM2NDRBMUQzQwA=
+[2026-02-11T23:45:02.665Z] Starting campaign send for ID: 85eab2a8-5071-4a41-823c-e87ecc47b0eb
+[2026-02-11T23:45:03.601Z] Audience filters: {"status":"Rojo","timeframe":"Inmediato"}
+[2026-02-11T23:45:03.760Z] Initial recipients count: 1
+[2026-02-11T23:45:03.764Z] Final recipients count: 1
+[2026-02-11T23:45:03.925Z] Attempting send to 524432138917 with 1 params...
+[2026-02-11T23:45:04.525Z] SUCCESS sending to 524432138917. WAMID: wamid.HBgNNTIxNDQzMjEzODkxNxUCABEYEkQxQkFEOTRFODExODBGNzgzRAA=
+[2026-02-11T23:55:01.639Z] Starting campaign send for ID: e15c642a-1542-4bda-a0ed-cfc63417e615
+[2026-02-11T23:55:02.410Z] Audience filters: {"status":"Rojo","timeframe":"Inmediato"}
+[2026-02-11T23:55:02.625Z] Initial recipients count: 1
+[2026-02-11T23:55:02.627Z] Final recipients count: 1
+[2026-02-11T23:55:02.813Z] Attempting send to 524432138917 with 1 params...
+[2026-02-11T23:55:03.845Z] SUCCESS sending to 524432138917. WAMID: wamid.HBgNNTIxNDQzMjEzODkxNxUCABEYEjVFMzM5NzJBRjVDM0Q5NTcwQQA=
+[2026-02-13T10:00:31.334Z] Starting campaign send for ID: 85eab2a8-5071-4a41-823c-e87ecc47b0eb

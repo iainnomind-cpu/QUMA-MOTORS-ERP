@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { supabase } from '../lib/supabase';
-import { User, Session } from '@supabase/supabase-js';
+import { supabase, logActivity } from '../lib/supabase';
 
 export interface AuthUser {
   id: string;
@@ -9,6 +8,7 @@ export interface AuthUser {
   full_name: string | null;
   phone: string | null;
   active: boolean;
+  branch_id: string | null;
 }
 
 interface UserProfile {
@@ -18,6 +18,7 @@ interface UserProfile {
   full_name: string | null;
   phone: string | null;
   active: boolean;
+  branch_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -42,7 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadingProfileRef = useRef(false);
   const lastSignedInTimeRef = useRef(0);
 
-  const loadProfile = async (userId: string): Promise<boolean> => {
+  const loadProfile = async (userId: string): Promise<UserProfile | null> => {
     // Evitar cargas simultáneas - pero esperar si hay una en progreso
     if (loadingProfileRef.current) {
       console.log('⚠ Profile load already in progress, waiting for completion...');
@@ -52,13 +53,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await new Promise(resolve => setTimeout(resolve, 500));
         attempts++;
       }
-      
-      // Si ya se cargó el perfil, retornar true
+
+      // Si ya se cargó el perfil, retornar el perfil
       if (user?.id === userId && profile) {
         console.log('✓ Profile already loaded during wait');
-        return true;
+        return profile;
       }
-      
+
       // Si aún está bloqueado después de 15 segundos, forzar reset
       if (loadingProfileRef.current) {
         console.warn('⚠ Profile load timeout, forcing reset');
@@ -67,10 +68,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     loadingProfileRef.current = true;
-    
+
     try {
       console.log('→ Loading profile for user:', userId);
-      
+
       const { data, error } = await supabase
         .from('user_profiles')
         .select('*')
@@ -85,12 +86,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(null);
           setProfile(null);
         }
-        return false;
+        return null;
       }
 
       if (data) {
         console.log('✓ Profile loaded successfully');
-        
+
         if (!data.active) {
           console.error('User account is inactive');
           if (mountedRef.current) {
@@ -98,9 +99,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUser(null);
             setProfile(null);
           }
-          return false;
+          return null;
         }
-        
+
         if (mountedRef.current) {
           setProfile(data);
           setUser({
@@ -109,10 +110,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             role: data.role,
             full_name: data.full_name,
             phone: data.phone,
-            active: data.active
+            active: data.active,
+            branch_id: data.branch_id || null
           });
         }
-        return true;
+        return data;
       } else {
         console.error('No profile data found');
         if (mountedRef.current) {
@@ -120,7 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(null);
           setProfile(null);
         }
-        return false;
+        return null;
       }
     } catch (error) {
       console.error('Exception loading profile:', error);
@@ -129,7 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
         setProfile(null);
       }
-      return false;
+      return null;
     } finally {
       loadingProfileRef.current = false;
       console.log('Profile load lock released');
@@ -151,7 +153,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = async (email: string, password: string) => {
     try {
       setLoading(true);
-      
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password
@@ -162,10 +164,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data.user) {
-        const success = await loadProfile(data.user.id);
-        if (!success) {
+        const loadedProfile = await loadProfile(data.user.id);
+        if (!loadedProfile) {
           throw new Error('No se pudo cargar el perfil del usuario');
         }
+
+        // Log login activity
+        await logActivity({
+          userId: loadedProfile.id,
+          userName: loadedProfile.full_name || loadedProfile.email,
+          userEmail: loadedProfile.email,
+          userRole: loadedProfile.role,
+          branchId: loadedProfile.branch_id,
+          actionType: 'login',
+          entityType: 'auth',
+          details: { action: 'Inicio de sesión' }
+        });
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -179,6 +193,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     try {
+      if (user) {
+        // Log logout activity before clearing session
+        await logActivity({
+          userId: user.id,
+          userName: user.full_name || user.email,
+          userEmail: user.email,
+          userRole: user.role,
+          branchId: user.branch_id,
+          actionType: 'logout',
+          entityType: 'auth',
+          details: { action: 'Cierre de sesión' }
+        });
+      }
+
       const { error } = await supabase.auth.signOut();
       if (error) {
         throw error;
@@ -204,9 +232,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       try {
         console.log('Initializing auth...');
-        
+
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
+
         if (sessionError) {
           console.error('Session error:', sessionError);
           if (mountedRef.current) {
@@ -214,7 +242,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           return;
         }
-        
+
         if (session?.user) {
           console.log('Session found, loading profile...');
           const success = await loadProfile(session.user.id);
@@ -245,7 +273,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('Auth state changed:', event);
-        
+
         if (!initializedRef.current) {
           console.log('Still initializing, ignoring event');
           return;
@@ -255,29 +283,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log('Ignoring INITIAL_SESSION');
           return;
         }
-        
+
         if (event === 'SIGNED_IN' && session?.user) {
           console.log('User signed in event received, userId:', session.user.id);
           console.log('Current user state:', { hasUser: !!user, hasProfile: !!profile, userId: user?.id });
-          
+
           if (user?.id === session.user.id && profile) {
             console.log('✓ User already authenticated and loaded, ignoring SIGNED_IN event');
             return;
           }
-          
+
           const now = Date.now();
           if (now - lastSignedInTimeRef.current < 5000) {
             console.log('⚠ Duplicate SIGNED_IN event detected (within 5s), ignoring');
             return;
           }
           lastSignedInTimeRef.current = now;
-          
+
           console.log('→ New sign in detected, loading profile...');
           if (mountedRef.current) {
             setLoading(true);
             console.log('Loading state set to true');
           }
-          
+
           try {
             const success = await loadProfile(session.user.id);
             console.log('SIGNED_IN: Profile load result:', success);

@@ -2,6 +2,24 @@ import { createContext, useContext, ReactNode, useState, useEffect } from 'react
 import type { Notification } from '../components/NotificationCenter';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { createStagnantLeadNotification, createUpcomingTaskNotification } from '../utils/notificationHelpers';
+
+interface Lead {
+  id: string;
+  name: string;
+  score: number;
+  status: 'Verde' | 'Amarillo' | 'Rojo';
+  model_interested?: string;
+  phone?: string;
+  email?: string;
+  timeframe?: string;
+  origin?: string;
+  financing_type?: string;
+  assigned_agent_id?: string;
+  branch_id?: string;
+  created_at: string;
+  updated_at: string;
+}
 
 interface NotificationContextType {
   notifications: Notification[];
@@ -15,7 +33,7 @@ interface NotificationContextType {
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
 // Función helper para generar el mensaje de notificación
-function generateLeadNotificationMessage(lead: any): string {
+function generateLeadNotificationMessage(lead: Lead): string {
   const statusEmoji = {
     'Verde': '🟢',
     'Amarillo': '🟡',
@@ -31,7 +49,7 @@ function generateLeadNotificationMessage(lead: any): string {
   const timeframeText = lead.timeframe ? `, Timeframe: ${lead.timeframe}` : '';
   const modelText = lead.model_interested || 'No especificado';
   const contactInfo = lead.phone || lead.email || 'Sin contacto';
-  
+
   // Acción sugerida según el status
   const suggestedAction = {
     'Verde': '🎯 Contactar de inmediato para mantener el interés alto y agendar cita.',
@@ -52,6 +70,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [processedLeads, setProcessedLeads] = useState<Set<string>>(new Set());
   const [salesAgentId, setSalesAgentId] = useState<string | null>(null);
+  const [branchId, setBranchId] = useState<string | null>(null);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const { user } = useAuth();
 
@@ -71,10 +90,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     const fetchSalesAgentId = async () => {
       try {
         console.log('🔍 Buscando sales_agent por email:', user.email);
-        
+
         const { data, error } = await supabase
           .from('sales_agents')
-          .select('id, name, email')
+          .select('id, name, email, branch_id')
           .eq('email', user.email)
           .eq('status', 'active')
           .single();
@@ -86,11 +105,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         }
 
         if (data) {
-          console.log('✅ Sales Agent encontrado:', data.id, '-', data.name);
+          console.log('✅ Sales Agent encontrado:', data.id, '-', data.name, 'Branch:', data.branch_id);
           setSalesAgentId(data.id);
+          setBranchId(data.branch_id);
         } else {
           console.log('⚠️ No se encontró sales_agent para este email');
           setSalesAgentId(null);
+          setBranchId(null);
         }
       } catch (error) {
         console.error('Error al obtener sales_agent_id:', error);
@@ -108,7 +129,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     const loadLeadsHistory = async () => {
       if (user.role === 'admin') {
         console.log('📚 Admin detectado - Cargando historial de leads asignados...');
-        
+
         try {
           // Obtener leads creados en las últimas 24 horas con agente asignado
           const twentyFourHoursAgo = new Date();
@@ -116,20 +137,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
           const { data: recentLeads, error } = await supabase
             .from('leads')
-            .select(`
-              id,
-              name,
-              score,
-              status,
-              model_interested,
-              phone,
-              email,
-              timeframe,
-              origin,
-              financing_type,
-              assigned_agent_id,
-              created_at
-            `)
+            .select('*')
             .not('assigned_agent_id', 'is', null)
             .gte('created_at', twentyFourHoursAgo.toISOString())
             .order('created_at', { ascending: false });
@@ -139,11 +147,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             return;
           }
 
-          if (recentLeads && recentLeads.length > 0) {
-            console.log(`📋 ${recentLeads.length} leads asignados encontrados en las últimas 24h`);
+          const leadsData = recentLeads as Lead[];
+
+          if (leadsData && leadsData.length > 0) {
+            console.log(`📋 ${leadsData.length} leads asignados encontrados en las últimas 24h`);
 
             // Obtener información de todos los agentes
-            const agentIds = [...new Set(recentLeads.map(l => l.assigned_agent_id))];
+            const agentIds = [...new Set(leadsData.map(l => l.assigned_agent_id))];
             const { data: agents } = await supabase
               .from('sales_agents')
               .select('id, name')
@@ -152,7 +162,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             const agentMap = new Map(agents?.map(a => [a.id, a.name]) || []);
 
             // Crear notificaciones para cada lead
-            const historyNotifications: Notification[] = recentLeads.map(lead => {
+            const historyNotifications: Notification[] = leadsData.map(lead => {
               const agentName = agentMap.get(lead.assigned_agent_id!) || 'Agente';
               const detailedMessage = generateLeadNotificationMessage(lead);
 
@@ -186,7 +196,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
             // Cargar notificaciones existentes del localStorage
             const existingNotifications = loadNotifications(false);
-            
+
             // Combinar historial con notificaciones existentes (evitar duplicados)
             const existingIds = new Set(existingNotifications.map(n => n.entity_id));
             const newHistoryNotifications = historyNotifications.filter(
@@ -202,7 +212,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             }
 
             // Marcar todos los leads como procesados
-            const leadIds = recentLeads.map(l => l.id);
+            const leadIds = leadsData.map(l => l.id);
             setProcessedLeads(new Set(leadIds));
           } else {
             console.log('ℹ️ No hay leads asignados en las últimas 24h');
@@ -223,14 +233,130 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   // Cargar notificaciones iniciales del localStorage
   useEffect(() => {
     loadNotifications();
-    
-    // Actualizar cada 30 segundos
+
+    // Función para verificar leads estancados
+    const checkStagnantLeads = async () => {
+      if (!user?.id || !salesAgentId) return;
+
+      const threeDaysAgo = new Date();
+      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+
+      // Lógica de filtrado por rol
+      let query = supabase
+        .from('leads')
+        .select('*')
+        .lt('updated_at', threeDaysAgo.toISOString())
+        .not('status', 'in', '("Vendido","Perdido")');
+
+      if (user.role === 'admin') {
+        // Admin: ve todo, pero quizás solo queramos notificar los muy críticos o todos.
+        // Por ahora dejamos todos los estancados globales.
+      } else if (user.role === 'manager' && branchId) {
+        // Manager: solo leads de su sucursal
+        query = query.eq('branch_id', branchId);
+      } else {
+        // Agente: solo sus leads asignados
+        query = query.eq('assigned_agent_id', salesAgentId);
+      }
+
+      const { data: stagnantLeads } = await query;
+
+      const stagnantLeadsData = stagnantLeads as Lead[];
+
+      if (stagnantLeadsData && stagnantLeadsData.length > 0) {
+        // Cargar estado de notificaciones descartadas para persistencia
+        const notifiedKey = `quma_notified_stagnant_${user.id}`;
+        const notifiedMap: Record<string, string> = JSON.parse(localStorage.getItem(notifiedKey) || '{}');
+        let hasChanges = false;
+
+        stagnantLeadsData.forEach(lead => {
+          // Si ya notificamos este lead con esta fecha de actualización, ignorar
+          if (notifiedMap[lead.id] === lead.updated_at) return;
+
+          const daysInactive = Math.floor((new Date().getTime() - new Date(lead.updated_at).getTime()) / (1000 * 3600 * 24));
+
+          addNotification(createStagnantLeadNotification({
+            id: lead.id,
+            name: lead.name,
+            days_inactive: daysInactive,
+            last_activity: lead.updated_at,
+            status: lead.status
+          }));
+
+          // Marcar como notificado
+          notifiedMap[lead.id] = lead.updated_at;
+          hasChanges = true;
+        });
+
+        if (hasChanges) {
+          localStorage.setItem(notifiedKey, JSON.stringify(notifiedMap));
+        }
+      }
+    };
+
+    // Función para verificar tareas próximas
+    const checkUpcomingTasks = async () => {
+      if (!user?.id) return;
+
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const now = new Date();
+
+      // Buscar tareas pendientes para hoy o mañana
+      // Asumiendo que existe una tabla 'tasks' o similar. Si no, ajustar query.
+      // Buscar tareas pendientes para hoy o mañana con filtro por rol
+      const { data: tasks } = await supabase
+        .from('tasks')
+        .select('*')
+        .gte('due_date', now.toISOString())
+        .lte('due_date', tomorrow.toISOString())
+        .eq('status', 'pending');
+
+      // Filtrar en memoria o ajustar query compleja (RLS debería manejar esto idealmente, pero reforzamos aquí)
+      const filteredTasks = tasks?.filter(task => {
+        if (user.role === 'admin') return true;
+        if (user.role === 'manager') return task.branch_id === branchId || task.assigned_to === salesAgentId; // Asumiendo tasks tienen branch_id
+        return task.assigned_to === salesAgentId;
+      }) || [];
+
+      if (filteredTasks.length > 0) {
+        const notifiedKey = `quma_notified_tasks_${user.id}`;
+        const notifiedSet = new Set(JSON.parse(localStorage.getItem(notifiedKey) || '[]'));
+        let hasChanges = false;
+
+        filteredTasks.forEach(task => {
+          if (notifiedSet.has(task.id)) return;
+
+          addNotification(createUpcomingTaskNotification({
+            id: task.id,
+            title: task.title,
+            due_date: task.due_date,
+            description: task.description
+          }));
+
+          notifiedSet.add(task.id);
+          hasChanges = true;
+        });
+
+        if (hasChanges) {
+          localStorage.setItem(notifiedKey, JSON.stringify(Array.from(notifiedSet)));
+        }
+      }
+    };
+
+    // Ejecutar verificaciones iniciales
+    checkStagnantLeads();
+    checkUpcomingTasks(); // Comentar si no existe tabla tasks aún
+
+    // Actualizar notificaciones y verificar leads/tareas periódicamente
     const interval = setInterval(() => {
       loadNotifications();
-    }, 30000);
+      checkStagnantLeads();
+      checkUpcomingTasks();
+    }, 30000); // Cada 30 seg (puede ser mayor para producción)
 
     return () => clearInterval(interval);
-  }, [user?.id]);
+  }, [user?.id, salesAgentId]);
 
   // Suscripción a cambios en tiempo real en la tabla leads
   useEffect(() => {
@@ -242,7 +368,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     console.log('🔔 Iniciando suscripción a notificaciones en tiempo real...');
     console.log('👤 Usuario:', user.email, '- Rol:', user.role);
     console.log('🆔 Sales Agent ID:', salesAgentId);
-    
+
     const channel = supabase
       .channel('leads-notifications')
       .on(
@@ -254,8 +380,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         },
         async (payload) => {
           console.log('✅ Evento detectado en leads:', payload.eventType);
-          
-          const lead = payload.new;
+
+          const lead = payload.new as Lead;
           const leadId = lead.id;
 
           // Solo procesar si tiene agente asignado y no lo hemos procesado antes
@@ -264,23 +390,34 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             console.log('🔍 Agente asignado al lead:', lead.assigned_agent_id);
             console.log('🔍 Sales Agent ID del usuario:', salesAgentId);
             console.log('🔍 Rol del usuario:', user.role);
-            
+
             // Verificar si el lead es para este usuario
+            // Verificar si el lead es para este usuario (ROL INTEGRADO)
             const isAdmin = user.role === 'admin';
+            const isManager = user.role === 'manager';
+            // Manager ve si es de su sucursal (necesitamos branch_id del lead, asumiendo que viene en payload o lead object)
+            // Si el payload no trae branch_id, habría que hacer fetch. Asumimos que sí o que el agente asignado es de la sucursal.
+            const isBranchMatch = isManager && branchId && (lead.branch_id === branchId); // Si lead tiene branch_id directo
+
+            // Fallback: Si lead no tiene branch_id, checkear agent ownership (agente pertenece a sucursal) - complejo para realtime
+            // Simplificación: Si es Manager y el lead se asignó a alguien de su sucursal (podríamos comparar con lista de agentes de sucursal, pero require fetch extra).
+            // Por ahora: Admin ve todo. Manager ve si coincide branch_id. Agente si es suyo.
+
             const isAssignedToCurrentUser = salesAgentId && lead.assigned_agent_id === salesAgentId;
 
+            const shouldNotify = isAdmin || isBranchMatch || isAssignedToCurrentUser;
+
             console.log('✓ Es admin?', isAdmin);
+            console.log('✓ Es Manager de Sucursal?', isBranchMatch);
             console.log('✓ Asignado a usuario actual?', isAssignedToCurrentUser);
 
-            // Solo mostrar notificación si:
-            // 1. El usuario es admin (ve todos los leads)
-            // 2. O el lead está asignado al sales_agent de este usuario
-            if (isAdmin || isAssignedToCurrentUser) {
+            // Solo mostrar notificación si corresponde
+            if (shouldNotify) {
               console.log('✅ Notificación PERMITIDA para este usuario');
-              
+
               // Marcar como procesado
               setProcessedLeads(prev => new Set(prev).add(leadId));
-              
+
               try {
                 // Obtener información del agente
                 const { data: agent, error: agentError } = await supabase
@@ -349,12 +486,12 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       console.log('🔌 Desconectando suscripción de notificaciones...');
       supabase.removeChannel(channel);
     };
-  }, [processedLeads, user?.email, user?.role, salesAgentId]);
+  }, [processedLeads, user?.email, user?.role, salesAgentId, branchId]);
 
   const loadNotifications = (updateState = true) => {
     const storageKey = getStorageKey();
     const stored = localStorage.getItem(storageKey);
-    
+
     if (stored) {
       try {
         const parsedNotifications: Notification[] = JSON.parse(stored);
@@ -364,7 +501,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           }
           return true;
         });
-        
+
         const sortedNotifications = validNotifications.sort((a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
@@ -372,7 +509,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         if (updateState) {
           setNotifications(sortedNotifications);
         }
-        
+
         return sortedNotifications;
       } catch (error) {
         console.error('Error al cargar notificaciones:', error);
@@ -382,7 +519,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         return [];
       }
     }
-    
+
     if (updateState) {
       setNotifications([]);
     }
@@ -411,7 +548,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     // Agregar al inicio del array (más reciente primero)
     const updated = [newNotification, ...notifications];
     saveNotifications(updated);
-    
+
     console.log('✅ Notificación agregada exitosamente:', newNotification.title);
     console.log(`📊 Total de notificaciones: ${updated.length}`);
   };

@@ -1,0 +1,36 @@
+
+ID: ea514a05-3be1-4d05-86f6-3c158f58afe8
+Name: Felicitaciones Cumpleaños Automático
+Audience: Clientes Vigentes (clients)
+Filters: {"status":"Vigente"}
+---
+
+ID: 912848b1-2ada-43f5-a0e5-ddfbed9aee2e
+Name: Campaña Promocional Febrero 2025
+Audience: Clientes Vigentes (clients)
+Filters: {"status":"Vigente"}
+---
+
+ID: 929c7315-af3e-49ce-9a7c-e256b02b53e6
+Name: Felicitaciones Cumpleaños Automático
+Audience: Cumpleañeros del Mes (mixed)
+Filters: {"birthday_month":"current"}
+---
+
+ID: e01346de-850b-4663-8d50-37728fb32dd4
+Name: Seguimiento Leads Calientes
+Audience: Leads Calientes (Verde) (leads)
+Filters: {"status":"Verde"}
+---
+
+ID: ae6ac943-062f-4173-aa69-99188705ec23
+Name: Reactivación Clientes Inactivos
+Audience: Clientes Inactivos (Reactivación) (clients)
+Filters: {"status":"No Vigente"}
+---
+
+ID: 6bae540b-2575-487c-85dc-e76b3a77e412
+Name: Pruebas
+Audience: Prubeas (leads)
+Filters: {"status":"Rojo","timeframe":"Inmediato"}
+---

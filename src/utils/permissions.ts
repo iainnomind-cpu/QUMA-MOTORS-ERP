@@ -21,10 +21,13 @@ const PERMISSIONS: Record<Role, string[]> = {
     'catalog.view',
     'catalog.edit',
     'finance.view',
+    'finance.create',
     'marketing.view',
     'marketing.edit',
     'scheduling.view',
-    'pipeline.view'
+    'pipeline.view',
+    'branch.view_own',
+    'financing.create'
   ],
   vendedor: [
     'leads.view_assigned',
@@ -127,4 +130,20 @@ export const getRoleDisplayName = (role: Role): string => {
     default:
       return role;
   }
+};
+
+export const canViewAllBranches = (userRole: Role): boolean => {
+  return userRole === 'admin';
+};
+
+export const canManageBranches = (userRole: Role): boolean => {
+  return userRole === 'admin';
+};
+
+export const canCreateFinancingRules = (userRole: Role): boolean => {
+  return userRole === 'admin' || userRole === 'gerente';
+};
+
+export const canSwitchBranch = (userRole: Role): boolean => {
+  return userRole === 'admin';
 };
