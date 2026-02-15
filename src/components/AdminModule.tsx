@@ -4,7 +4,7 @@ import { useBranch } from '../contexts/BranchContext';
 import { useAuth } from '../contexts/AuthContext';
 import {
   Settings, Users, Award, DollarSign, Sliders, Shield, Activity, Plus, Edit2, Trash2, X, Save, Eye, EyeOff, ToggleLeft, ToggleRight, TrendingUp,
-  MessageSquare, Bell, Send, RefreshCw, Phone, CheckCircle, Clock, AlertTriangle, XCircle, Search, Filter, Calendar, Image, Building2, MapPin
+  MessageSquare, Bell, Send, RefreshCw, Phone, CheckCircle, Clock, AlertTriangle, XCircle, Search, Filter, Calendar, Image, Building2, MapPin, Package
 } from 'lucide-react';
 
 type ViewMode = 'overview' | 'users' | 'scoring' | 'promotions' | 'settings' | 'catalog' | 'logs' | 'notifications' | 'branches';
