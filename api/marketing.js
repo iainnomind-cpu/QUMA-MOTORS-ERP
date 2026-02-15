@@ -530,6 +530,12 @@ export default async function handler(req, res) {
                 const processResult = await executeProcessScheduled();
                 return res.status(200).json({ success: true, ...processResult });
 
+            case 'send_template':
+                const { to, template, components, language } = req.body;
+                if (!to || !template) return res.status(400).json({ error: 'Missing to or template' });
+                const sendTemplateResult = await sendTemplateMessage(to, template, components, language);
+                return res.status(200).json({ success: true, ...sendTemplateResult });
+
             default:
                 return res.status(400).json({ error: 'Invalid action. Supported: send_campaign, create_template, sync_templates, process_scheduled' });
         }

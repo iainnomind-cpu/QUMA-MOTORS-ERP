@@ -694,7 +694,7 @@ export function LeadsModule() {
     if (!leadError && !assignmentError) {
       const { data: agentData } = await supabase
         .from('sales_agents')
-        .select('total_leads_assigned, total_leads_converted')
+        .select('total_leads_assigned, total_leads_converted, phone, name')
         .eq('id', agentId)
         .single();
 
@@ -711,6 +711,35 @@ export function LeadsModule() {
             conversion_rate: parseFloat(conversionRate.toFixed(2))
           })
           .eq('id', agentId);
+
+        // Send WhatsApp Notification to Agent
+        if (agentData.phone) {
+          try {
+            await fetch('/api/marketing?action=send_template', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                to: agentData.phone,
+                template: 'asignacion_lead', // Asegúrate de que este template exista en Meta
+                language: 'es_MX',
+                components: [
+                  {
+                    type: 'body',
+                    parameters: [
+                      { type: 'text', text: agentData.name || 'Agente' }, // {{1}} Agente Name
+                      { type: 'text', text: selectedLead.name || 'Cliente' }, // {{2}} Lead Name
+                      { type: 'text', text: selectedLead.model_interested || 'Interés' }, // {{3}} Model
+                      { type: 'text', text: selectedLead.phone || 'N/A' } // {{4}} Phone
+                    ]
+                  }
+                ]
+              })
+            });
+            console.log('✅ WhatsApp notification sent to agent');
+          } catch (err) {
+            console.error('❌ Failed to send WhatsApp notification:', err);
+          }
+        }
       }
 
       setSelectedLead({ ...selectedLead, assigned_agent_id: agentId });

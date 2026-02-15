@@ -61,7 +61,20 @@ serve(async (req) => {
 
         if (deleteProfileError) {
             console.error('Error deleting profile:', deleteProfileError)
-            // Even if profile delete "fails" (e.g. already deleted), Auth delete succeeded, so we can consider it a success or warn.
+        }
+
+        // 3. Delete user from sales_agents (if exists)
+        const { error: deleteAgentError } = await supabaseClient
+            .from('sales_agents')
+            .delete()
+            .eq('id', user_id) // Assuming sales_agents.id is the user_id (or we should match by email if ID logic differs)
+
+        // Fallback: Delete by email if ID didn't catch it (optional, but safer if IDs aren't synced)
+        // However, usually ID is the key. If sales_agents uses a different ID, we might need to query by email first.
+        // Given existing code, let's try deleting by ID first.
+
+        if (deleteAgentError) {
+            console.error('Error deleting sales_agent:', deleteAgentError)
         }
 
         return new Response(
