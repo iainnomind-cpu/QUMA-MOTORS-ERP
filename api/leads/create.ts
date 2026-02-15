@@ -1,5 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+
+// Load .env
+dotenv.config();
 
 // Crear cliente de Supabase
 const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
