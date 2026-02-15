@@ -293,7 +293,7 @@ export function AdminModule() {
 
       // 3. Send to Meta for approval
       try {
-        const res = await fetch('http://localhost:3000/api/marketing?action=create_template', {
+        const res = await fetch('/api/marketing?action=create_template', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -340,7 +340,7 @@ export function AdminModule() {
   const handleSyncNotificationStatus = async () => {
     setIsSyncingNotifications(true);
     try {
-      const res = await fetch('http://localhost:3000/api/marketing?action=sync_templates', { method: 'POST' });
+      const res = await fetch('/api/marketing?action=sync_templates', { method: 'POST' });
       const result = await res.json();
       if (result.success) {
         // Match synced template statuses to notifications by template_name
