@@ -345,9 +345,12 @@ export function AdminModule() {
       if (result.success) {
         // Match synced template statuses to notifications by template_name
         for (const notif of notifications) {
-          const { data: tpl } = await supabase.from('whatsapp_templates').select('status').eq('name', notif.template_name).single();
+          const { data: tpl } = await supabase.from('whatsapp_templates').select('status').eq('name', notif.template_name).maybeSingle();
+          console.log(`🔄 Syncing ${notif.template_name}:`, tpl?.status);
           if (tpl && tpl.status) {
-            await supabase.from('whatsapp_notifications').update({ status: tpl.status, active: tpl.status === 'approved' }).eq('id', notif.id);
+            const isActive = tpl.status.toUpperCase() === 'APPROVED';
+            console.log(`   -> Setting active: ${isActive} (Status: ${tpl.status})`);
+            await supabase.from('whatsapp_notifications').update({ status: tpl.status, active: isActive }).eq('id', notif.id);
           }
         }
         loadNotifications();
