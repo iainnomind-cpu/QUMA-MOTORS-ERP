@@ -287,7 +287,7 @@ export function PipelineKanban() {
     const colors = getColumnColor(status);
 
     return (
-      <div className="flex-1 min-w-[280px] md:min-w-[300px]">
+      <div className="flex-1 min-w-[220px] lg:min-w-0">
         <div className={`bg-gradient-to-br ${colors.bg} rounded-t-xl border-2 ${colors.border} p-4`}>
           <div className="flex items-center justify-between mb-2">
             <h3 className={`font-bold text-lg ${colors.text}`}>{title}</h3>
@@ -387,7 +387,7 @@ export function PipelineKanban() {
         </div>
       </div>
 
-      <div className="flex gap-4 overflow-x-auto pb-4 px-1">
+      <div className="flex gap-4 overflow-x-auto pb-4 px-1 xl:grid xl:grid-cols-4 xl:overflow-visible">
         <KanbanColumn title="🔴 Nutrición" leads={rojos} status="Rojo" />
         <KanbanColumn title="🟡 En Proceso" leads={amarillos} status="Amarillo" />
         <KanbanColumn title="🟢 Trámite Activo" leads={verdes} status="Verde" />
