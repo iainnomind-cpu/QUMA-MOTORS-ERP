@@ -96,8 +96,7 @@ export async function notifyAgentLeadAssignment(agent: { phone: string; name: st
                 parameters: [
                     { type: 'text', text: agent.name || 'Agente' },
                     { type: 'text', text: lead.name || 'Nuevo Cliente' },
-                    { type: 'text', text: lead.model_interested || 'Interés General' },
-                    { type: 'text', text: lead.phone || 'Sin número' }
+                    { type: 'text', text: `${lead.model_interested || 'Interés General'} - ${lead.phone || 'Sin número'}` }
                 ]
             }
         ]
