@@ -43,6 +43,7 @@ interface CreateLeadResponse {
   };
   error?: string;
   message?: string;
+  whatsapp_debug?: any;
 }
 
 // Validación
@@ -400,7 +401,13 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
       },
       message: assignedAgent
         ? `Lead "${insertedLead.name}" creado exitosamente con score ${insertedLead.score} (${initialStatus}) y asignado a ${assignedAgent.name}`
-        : `Lead "${insertedLead.name}" creado exitosamente con score ${insertedLead.score} (${initialStatus}) - Sin agentes disponibles para asignar`
+        : `Lead "${insertedLead.name}" creado exitosamente con score ${insertedLead.score} (${initialStatus}) - Sin agentes disponibles para asignar`,
+      whatsapp_debug: {
+        attempted: !!assignedAgent,
+        agent_phone: assignedAgent?.phone || 'N/A',
+        has_credentials: !!(process.env.PHONE_NUMBER_ID && process.env.META_ACCESS_TOKEN),
+        status: 'proccessed_in_background'
+      }
     };
 
   } catch (error) {
