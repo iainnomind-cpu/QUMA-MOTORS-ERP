@@ -3,6 +3,7 @@ import { supabase, Lead, Client, SalesAgent, LeadInteraction, LeadFollowUp, Lead
 import { LeadScoringEngine } from '../lib/scoringEngine';
 import { useNotificationContext } from '../context/NotificationContext';
 import { createGreenLeadNotification, createLowScoreNotification, createFollowUpNotification } from '../utils/notificationHelpers';
+import { notifyAgentLeadAssignment, notifyTestDriveScheduled } from '../utils/whatsappNotifications';
 import { useAuth } from '../contexts/AuthContext';
 import { useBranch } from '../contexts/BranchContext';
 import { canDeleteLead, canViewAllLeads, canAssignLead, canDeleteClient, type Role } from '../utils/permissions';
@@ -545,6 +546,25 @@ export function LeadsModule() {
                 date: formData.test_drive_date
               }
             });
+
+            // Notify Agent if assigned
+            if (selectedLead.assigned_agent_id) {
+              const { data: agentData } = await supabase
+                .from('sales_agents')
+                .select('phone, name')
+                .eq('id', selectedLead.assigned_agent_id)
+                .single();
+
+              if (agentData && agentData.phone) {
+                await notifyTestDriveScheduled(
+                  agentData.phone,
+                  agentData.name,
+                  formData.name,
+                  formData.model_interested,
+                  formData.test_drive_date
+                );
+              }
+            }
           }
         }
       } else if (!formData.test_drive_requested && existingAppointments && existingAppointments.length > 0) {
@@ -714,31 +734,14 @@ export function LeadsModule() {
 
         // Send WhatsApp Notification to Agent
         if (agentData.phone) {
-          try {
-            await fetch('/api/marketing?action=send_template', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                to: agentData.phone,
-                template: 'asignacion_lead', // Asegúrate de que este template exista en Meta
-                language: 'es_MX',
-                components: [
-                  {
-                    type: 'body',
-                    parameters: [
-                      { type: 'text', text: agentData.name || 'Agente' }, // {{1}} Agente Name
-                      { type: 'text', text: selectedLead.name || 'Cliente' }, // {{2}} Lead Name
-                      { type: 'text', text: selectedLead.model_interested || 'Interés' }, // {{3}} Model
-                      { type: 'text', text: selectedLead.phone || 'N/A' } // {{4}} Phone
-                    ]
-                  }
-                ]
-              })
-            });
-            console.log('✅ WhatsApp notification sent to agent');
-          } catch (err) {
-            console.error('❌ Failed to send WhatsApp notification:', err);
-          }
+          await notifyAgentLeadAssignment(
+            { phone: agentData.phone, name: agentData.name },
+            {
+              name: selectedLead.name,
+              model_interested: selectedLead.model_interested,
+              phone: selectedLead.phone
+            }
+          );
         }
       }
 
