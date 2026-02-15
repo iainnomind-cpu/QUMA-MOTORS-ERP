@@ -491,7 +491,24 @@ export function AdminModule() {
 
   const handleUpdateSetting = async (setting: SystemSetting, newValue: any) => {
     const oldValue = setting.setting_value?.value;
-    await supabase.from('system_settings').update({ setting_value: { value: newValue } }).eq('id', setting.id);
+
+    // Merge new value with existing metadata to prevent data loss
+    const updatedValue = {
+      ...setting.setting_value,
+      value: newValue
+    };
+
+    const { error } = await supabase.from('system_settings').update({
+      setting_value: updatedValue,
+      updated_at: new Date().toISOString()
+    }).eq('id', setting.id);
+
+    if (error) {
+      console.error('Error updating setting:', error);
+      alert('Error al actualizar la configuración');
+      return;
+    }
+
     log('update', 'setting', { key: setting.setting_key, old_value: oldValue, new_value: newValue, action: 'Configuración actualizada' }, setting.id);
     loadSettings();
   };
@@ -1055,46 +1072,135 @@ export function AdminModule() {
           )}
 
           {viewMode === 'settings' && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-700">Configuración del Sistema</h3>
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-800">Configuración del Sistema</h3>
+                  <p className="text-gray-500">Administra los parámetros globales de la aplicación.</p>
+                </div>
+                <button
+                  onClick={loadSettings}
+                  className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Recargar configuración"
+                >
+                  <RefreshCw className="w-5 h-5" />
+                </button>
+              </div>
 
-              <div className="grid grid-cols-1 gap-4">
-                {settings.map((setting) => (
-                  <div key={setting.id} className="bg-white rounded-lg p-5 border-2 border-gray-200">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h4 className="font-bold text-gray-800">{setting.setting_key}</h4>
-                          <span className="px-2 py-1 text-xs font-bold rounded bg-gray-100 text-gray-700 border border-gray-300">
-                            {setting.category}
-                          </span>
+              {settings.length === 0 ? (
+                <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                  <Settings className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 font-medium">No hay configuraciones disponibles.</p>
+                  <p className="text-sm text-gray-400">Ejecuta el script de migración para inicializar los datos.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-8">
+                  {Object.entries(
+                    settings.reduce((acc, setting) => {
+                      const cat = setting.category || 'Otros';
+                      if (!acc[cat]) acc[cat] = [];
+                      acc[cat].push(setting);
+                      return acc;
+                    }, {} as Record<string, typeof settings>)
+                  ).map(([category, categorySettings]) => (
+                    <div key={category} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                      <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex items-center gap-3">
+                        <div className={`p-2 rounded-lg ${category === 'general' ? 'bg-blue-100 text-blue-600' :
+                          category === 'finance' ? 'bg-green-100 text-green-600' :
+                            category === 'crm' ? 'bg-purple-100 text-purple-600' :
+                              category === 'inventory' ? 'bg-orange-100 text-orange-600' :
+                                'bg-gray-100 text-gray-600'
+                          }`}>
+                          {category === 'general' ? <Building2 className="w-5 h-5" /> :
+                            category === 'finance' ? <DollarSign className="w-5 h-5" /> :
+                              category === 'crm' ? <Users className="w-5 h-5" /> :
+                                category === 'inventory' ? <Package className="w-5 h-5" /> :
+                                  category === 'notifications' ? <Bell className="w-5 h-5" /> :
+                                    <Settings className="w-5 h-5" />}
                         </div>
-                        <p className="text-sm text-gray-600 mb-3">{setting.description}</p>
-                        <div className="flex items-center gap-3">
-                          <span className="text-sm font-semibold text-gray-700">Valor Actual:</span>
-                          {typeof setting.setting_value.value === 'boolean' ? (
-                            <button
-                              onClick={() => handleUpdateSetting(setting, !setting.setting_value.value)}
-                              className={`flex items-center gap-2 px-3 py-1 rounded font-semibold text-sm ${setting.setting_value.value ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
-                                }`}
-                            >
-                              {setting.setting_value.value ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
-                              {setting.setting_value.value ? 'Activo' : 'Inactivo'}
-                            </button>
-                          ) : (
-                            <span className="px-3 py-1 bg-blue-50 text-blue-800 rounded font-mono text-sm">
-                              {JSON.stringify(setting.setting_value.value)}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-gray-500 mt-2">
-                          Editable por: {setting.editable_by_role.join(', ')}
-                        </div>
+                        <h4 className="text-lg font-bold text-gray-800 capitalize">
+                          {category === 'crm' ? 'CRM & Leads' :
+                            category === 'finance' ? 'Finanzas & Ventas' :
+                              category === 'inventory' ? 'Inventario & Stock' :
+                                category === 'notifications' ? 'Notificaciones' :
+                                  category}
+                        </h4>
+                      </div>
+
+                      <div className="divide-y divide-gray-100">
+                        {categorySettings.map((setting) => (
+                          <div key={setting.id} className="p-6 hover:bg-gray-50 transition-colors group">
+                            <div className="flex items-start gap-6">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="font-semibold text-gray-800 text-base">
+                                    {setting.setting_value.label || setting.setting_key}
+                                  </span>
+                                  {setting.is_public && (
+                                    <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs font-bold rounded-full border border-blue-100">
+                                      Público
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-sm text-gray-500 mb-3">{setting.description}</p>
+
+                                <div className="w-full max-w-xl">
+                                  {/* Boolean Toggle */}
+                                  {setting.setting_value.type === 'boolean' && (
+                                    <button
+                                      onClick={() => handleUpdateSetting(setting, !setting.setting_value.value)}
+                                      className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${setting.setting_value.value ? 'bg-blue-600' : 'bg-gray-200'
+                                        }`}
+                                    >
+                                      <span
+                                        className={`${setting.setting_value.value ? 'translate-x-6' : 'translate-x-1'
+                                          } inline-block h-5 w-5 transform rounded-full bg-white transition-transform shadow-sm`}
+                                      />
+                                    </button>
+                                  )}
+
+                                  {/* Number Input */}
+                                  {setting.setting_value.type === 'number' && (
+                                    <div className="relative">
+                                      <input
+                                        type="number"
+                                        value={setting.setting_value.value}
+                                        onChange={(e) => handleUpdateSetting(setting, Number(e.target.value))}
+                                        className="block w-full rounded-lg border-gray-300 bg-gray-50 focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-4 py-2 border hover:bg-white transition-colors"
+                                      />
+                                    </div>
+                                  )}
+
+                                  {/* String Input */}
+                                  {setting.setting_value.type === 'string' && (
+                                    <input
+                                      type="text"
+                                      value={setting.setting_value.value}
+                                      onChange={(e) => handleUpdateSetting(setting, e.target.value)}
+                                      onBlur={(e) => handleUpdateSetting(setting, e.target.value)}
+                                      className="block w-full rounded-lg border-gray-300 bg-gray-50 focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-4 py-2 border hover:bg-white transition-colors"
+                                    />
+                                  )}
+
+                                  {/* List/JSON Input */}
+                                  {(setting.setting_value.type === 'list' || setting.setting_value.type === 'json') && (
+                                    <div className="bg-gray-50 rounded-lg border border-gray-200 p-2 font-mono text-xs text-gray-600 overflow-x-auto">
+                                      {JSON.stringify(setting.setting_value.value)}
+                                      <div className="mt-1 text-xs text-orange-500 italic">
+                                        (Edición avanzada próximamente)
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
