@@ -75,7 +75,7 @@ function calculateInitialScore(data: CreateLeadRequest): number {
   // Contacto (+20 puntos máximo)
   if (data.email && data.email.trim().length > 0) score += 10;
   if (data.phone && data.phone.trim().length > 0) score += 10;
-  
+
   // Interés específico (+15 puntos)
   if (data.model_interested && data.model_interested.trim().length > 0) score += 15;
 
@@ -91,7 +91,7 @@ function calculateInitialScore(data: CreateLeadRequest): number {
   // Financiamiento (hasta +20 puntos basado en tipo)
   if (data.financing_type) {
     const financingType = data.financing_type.toLowerCase();
-    
+
     if (financingType.includes('contado')) {
       score += 20; // CONTADO = Máxima prioridad
     } else if (financingType.includes('yamaha especial')) {
@@ -151,10 +151,10 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
     if (data.test_drive_date) {
       // Asumimos que la hora proporcionada es hora local de México
       // Agregamos 6 horas para convertir a UTC (México es GMT-6)
-      const localDate = data.test_drive_date.includes('Z') || data.test_drive_date.includes('+') 
+      const localDate = data.test_drive_date.includes('Z') || data.test_drive_date.includes('+')
         ? new Date(data.test_drive_date)
         : new Date(data.test_drive_date + '-06:00'); // Agregar zona horaria de México
-      
+
       testDriveDateFormatted = localDate.toISOString();
     }
 
@@ -204,14 +204,14 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
       // Obtener agentes activos ordenados por total_leads_assigned (ascendente)
       const { data: activeAgents, error: agentsError } = await supabase
         .from('sales_agents')
-        .select('id, name, email, total_leads_assigned')
+        .select('id, name, email, phone, total_leads_assigned')
         .eq('status', 'active')
         .order('total_leads_assigned', { ascending: true })
         .limit(1);
 
       if (!agentsError && activeAgents && activeAgents.length > 0) {
         assignedAgent = activeAgents[0];
-        
+
         // Asignar el lead al agente
         const { error: updateError } = await supabase
           .from('leads')
@@ -221,15 +221,16 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
         if (updateError) {
           console.error('Error al asignar lead al agente:', updateError);
         } else {
-          // Incrementar contador del agente
+
+          // Increment agent count
           await supabase
             .from('sales_agents')
-            .update({ 
-              total_leads_assigned: (assignedAgent.total_leads_assigned || 0) + 1 
+            .update({
+              total_leads_assigned: (assignedAgent.total_leads_assigned || 0) + 1
             })
             .eq('id', assignedAgent.id);
-          
-          // Crear registro de asignación
+
+          // Create assignment record
           await supabase
             .from('lead_assignments')
             .insert([{
@@ -241,6 +242,53 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
             }]);
 
           console.log(`Lead ${insertedLead.id} asignado a agente ${assignedAgent.name} (${assignedAgent.id})`);
+
+          // --- SEND WHATSAPP NOTIFICATION TO AGENT ---
+          if (process.env.PHONE_NUMBER_ID && process.env.META_ACCESS_TOKEN && assignedAgent.phone) {
+            try {
+              const phoneId = process.env.PHONE_NUMBER_ID;
+              const token = process.env.META_ACCESS_TOKEN;
+              const version = process.env.API_VERSION || 'v21.0';
+
+              // Format phone: remove non-digits. If 10 digits, add '52'.
+              let agentPhone = assignedAgent.phone.replace(/\D/g, '');
+              if (agentPhone.length === 10) agentPhone = '52' + agentPhone;
+
+              const notificationBody = {
+                messaging_product: 'whatsapp',
+                to: agentPhone,
+                type: 'template',
+                template: {
+                  name: 'notif_nuevo_lead',
+                  language: { code: 'es_MX' },
+                  components: [
+                    {
+                      type: 'body',
+                      parameters: [
+                        { type: 'text', text: assignedAgent.name || 'Agente' },     // {{1}}
+                        { type: 'text', text: insertedLead.name || 'Cliente' },     // {{2}}
+                        { type: 'text', text: insertedLead.model_interested || 'Interés General' }, // {{3}}
+                        { type: 'text', text: insertedLead.phone || 'N/A' }         // {{4}}
+                      ]
+                    }
+                  ]
+                }
+              };
+
+              await fetch(`https://graph.facebook.com/${version}/${phoneId}/messages`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(notificationBody)
+              });
+              console.log(`✅ WhatsApp sent to agent ${assignedAgent.name}`);
+            } catch (waError) {
+              console.error('❌ Failed to send WhatsApp to agent:', waError);
+            }
+          }
+          // --- END WHATSAPP NOTIFICATION ---
         }
       } else {
         console.log('No hay agentes activos disponibles para asignar');
@@ -288,6 +336,52 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
           agent_id: assignedAgent?.id || null,
           agent_name: assignedAgent?.name || null
         }]);
+
+      // --- SEND TEST DRIVE WHATSAPP NOTIFICATION ---
+      if (process.env.PHONE_NUMBER_ID && process.env.META_ACCESS_TOKEN && assignedAgent && assignedAgent.phone) {
+        try {
+          const phoneId = process.env.PHONE_NUMBER_ID;
+          const token = process.env.META_ACCESS_TOKEN;
+          const version = process.env.API_VERSION || 'v21.0';
+
+          let agentPhone = assignedAgent.phone.replace(/\D/g, '');
+          if (agentPhone.length === 10) agentPhone = '52' + agentPhone;
+
+          const tdBody = {
+            messaging_product: 'whatsapp',
+            to: agentPhone,
+            type: 'template',
+            template: {
+              name: 'notif_prueba_manejo',
+              language: { code: 'es_MX' },
+              components: [
+                {
+                  type: 'body',
+                  parameters: [
+                    { type: 'text', text: assignedAgent.name || 'Agente' },
+                    { type: 'text', text: data.name },
+                    { type: 'text', text: data.model_interested || 'Modelo' },
+                    { type: 'text', text: new Date(testDriveDateFormatted).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }) }
+                  ]
+                }
+              ]
+            }
+          };
+
+          await fetch(`https://graph.facebook.com/${version}/${phoneId}/messages`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(tdBody)
+          });
+          console.log(`✅ Test Drive WhatsApp sent to agent ${assignedAgent.name}`);
+        } catch (waError) {
+          console.error('❌ Failed to send Test Drive WhatsApp:', waError);
+        }
+      }
+      // --- END TEST DRIVE NOTIFICATION ---
     }
 
     return {
@@ -300,7 +394,7 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
         assigned_agent_id: assignedAgent?.id || null,
         assigned_agent_name: assignedAgent?.name || null
       },
-      message: assignedAgent 
+      message: assignedAgent
         ? `Lead "${insertedLead.name}" creado exitosamente con score ${insertedLead.score} (${initialStatus}) y asignado a ${assignedAgent.name}`
         : `Lead "${insertedLead.name}" creado exitosamente con score ${insertedLead.score} (${initialStatus}) - Sin agentes disponibles para asignar`
     };
@@ -341,7 +435,7 @@ export default async function handler(
     // Validar API Key
     const apiKey = req.headers['x-api-key'];
     const validApiKey = process.env.API_KEY;
-    
+
     if (validApiKey && apiKey !== validApiKey) {
       return res.status(401).json({
         success: false,
