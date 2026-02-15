@@ -346,11 +346,9 @@ export function AdminModule() {
         // Match synced template statuses to notifications by template_name
         for (const notif of notifications) {
           const { data: tpl } = await supabase.from('whatsapp_templates').select('status').eq('name', notif.template_name).maybeSingle();
-          console.log(`🔄 Syncing ${notif.template_name}:`, tpl?.status);
           if (tpl && tpl.status) {
             const isActive = tpl.status.toUpperCase() === 'APPROVED';
-            console.log(`   -> Setting active: ${isActive} (Status: ${tpl.status})`);
-            await supabase.from('whatsapp_notifications').update({ status: tpl.status, active: isActive }).eq('id', notif.id);
+            await supabase.from('whatsapp_notifications').update({ status: tpl.status.toLowerCase(), active: isActive }).eq('id', notif.id);
           }
         }
         loadNotifications();
@@ -381,7 +379,7 @@ export function AdminModule() {
   };
 
   const getStatusConfig = (status: string) => {
-    switch (status) {
+    switch (status?.toLowerCase()) {
       case 'approved': return { label: 'Aprobada', color: 'bg-green-100 text-green-800 border-green-300', icon: CheckCircle };
       case 'pending': return { label: 'En Revisión', color: 'bg-yellow-100 text-yellow-800 border-yellow-300', icon: Clock };
       case 'rejected': return { label: 'Rechazada', color: 'bg-red-100 text-red-800 border-red-300', icon: XCircle };
@@ -1249,7 +1247,7 @@ export function AdminModule() {
                   const StatusIcon = statusCfg.icon;
                   const eventDef = NOTIFICATION_EVENTS.find(e => e.key === notif.event_key);
                   return (
-                    <div key={notif.id} className={`bg-white rounded-xl p-5 border-2 transition-all ${notif.status === 'approved' ? 'border-green-300 shadow-sm' : notif.status === 'pending' ? 'border-yellow-300' : notif.status === 'rejected' ? 'border-red-300' : 'border-gray-200'}`}>
+                    <div key={notif.id} className={`bg-white rounded-xl p-5 border-2 transition-all ${notif.status?.toLowerCase() === 'approved' ? 'border-green-300 shadow-sm' : notif.status?.toLowerCase() === 'pending' ? 'border-yellow-300' : notif.status?.toLowerCase() === 'rejected' ? 'border-red-300' : 'border-gray-200'}`}>
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center gap-3 mb-2">
