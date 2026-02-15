@@ -204,6 +204,9 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
 
     // ===== ASIGNACIÓN AUTOMÁTICA ROUND ROBIN =====
     let assignedAgent = null;
+    let metaResponse = null;
+    let metaHttpCode = 0;
+    let metaError = null;
 
     try {
       // Obtener agentes activos ordenados por total_leads_assigned (ascendente)
@@ -249,6 +252,7 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
           console.log(`Lead ${insertedLead.id} asignado a agente ${assignedAgent.name} (${assignedAgent.id})`);
 
           // --- SEND WHATSAPP NOTIFICATION TO AGENT ---
+
           if (process.env.PHONE_NUMBER_ID && process.env.META_ACCESS_TOKEN && assignedAgent.phone) {
             try {
               const phoneId = process.env.PHONE_NUMBER_ID;
@@ -280,7 +284,7 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
                 }
               };
 
-              await fetch(`https://graph.facebook.com/${version}/${phoneId}/messages`, {
+              const response = await fetch(`https://graph.facebook.com/${version}/${phoneId}/messages`, {
                 method: 'POST',
                 headers: {
                   'Authorization': `Bearer ${token}`,
@@ -288,9 +292,13 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
                 },
                 body: JSON.stringify(notificationBody)
               });
-              console.log(`✅ WhatsApp sent to agent ${assignedAgent.name}`);
+
+              metaHttpCode = response.status;
+              metaResponse = await response.json();
+              console.log(`✅ WhatsApp sent to agent ${assignedAgent.name} - Status: ${response.status}`);
             } catch (waError) {
               console.error('❌ Failed to send WhatsApp to agent:', waError);
+              metaError = waError instanceof Error ? waError.message : 'Unknown error';
             }
           }
           // --- END WHATSAPP NOTIFICATION ---
@@ -406,7 +414,9 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
         attempted: !!assignedAgent,
         agent_phone: assignedAgent?.phone || 'N/A',
         has_credentials: !!(process.env.PHONE_NUMBER_ID && process.env.META_ACCESS_TOKEN),
-        status: 'proccessed_in_background'
+        meta_http_code: metaHttpCode,
+        meta_response: metaResponse,
+        meta_error: metaError
       }
     };
 
