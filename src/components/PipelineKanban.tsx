@@ -287,7 +287,7 @@ export function PipelineKanban() {
     const colors = getColumnColor(status);
 
     return (
-      <div className="flex-1 min-w-[320px]">
+      <div className="flex-1 min-w-[280px] md:min-w-[300px]">
         <div className={`bg-gradient-to-br ${colors.bg} rounded-t-xl border-2 ${colors.border} p-4`}>
           <div className="flex items-center justify-between mb-2">
             <h3 className={`font-bold text-lg ${colors.text}`}>{title}</h3>
@@ -387,7 +387,7 @@ export function PipelineKanban() {
         </div>
       </div>
 
-      <div className="flex gap-6 overflow-x-auto pb-4">
+      <div className="flex gap-4 overflow-x-auto pb-4 px-1">
         <KanbanColumn title="🔴 Nutrición" leads={rojos} status="Rojo" />
         <KanbanColumn title="🟡 En Proceso" leads={amarillos} status="Amarillo" />
         <KanbanColumn title="🟢 Trámite Activo" leads={verdes} status="Verde" />
@@ -452,10 +452,10 @@ export function PipelineKanban() {
               <div className="flex items-center justify-between pb-4 border-b-2 border-gray-200">
                 <div>
                   <span className={`inline-block px-4 py-2 rounded-lg font-bold text-sm ${selectedLead.status === 'Verde'
-                      ? 'bg-green-100 text-green-800 border-2 border-green-300'
-                      : selectedLead.status === 'Amarillo'
-                        ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-300'
-                        : 'bg-red-100 text-red-800 border-2 border-red-300'
+                    ? 'bg-green-100 text-green-800 border-2 border-green-300'
+                    : selectedLead.status === 'Amarillo'
+                      ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-300'
+                      : 'bg-red-100 text-red-800 border-2 border-red-300'
                     }`}>
                     {selectedLead.status}
                   </span>
@@ -700,8 +700,8 @@ export function PipelineKanban() {
                                 </button>
                               )}
                               <span className={`px-2 py-1 text-xs font-bold rounded ${followUp.status === 'completed' ? 'bg-green-100 text-green-800' :
-                                  followUp.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                    'bg-gray-100 text-gray-800'
+                                followUp.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                  'bg-gray-100 text-gray-800'
                                 }`}>
                                 {followUp.status}
                               </span>
