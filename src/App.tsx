@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { BranchProvider, useBranch } from './contexts/BranchContext';
 import { NotificationProvider, useNotificationContext } from './context/NotificationContext';
+import { ConnectionProvider, useConnection } from './contexts/ConnectionContext';
 import { Login } from './components/Login';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { NotificationCenter } from './components/NotificationCenter';
@@ -46,6 +47,9 @@ function AppContent() {
   const { notifications, markAsRead, markAllAsRead, dismissNotification } = useNotificationContext();
   const { user, signOut } = useAuth();
   const { currentBranch, allBranches, selectedBranchId, switchBranch, isAllBranchesView } = useBranch();
+  // Connection context for auto-refresh
+  const { refreshKey } = useConnection();
+
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -260,7 +264,12 @@ function AppContent() {
           </div>
         </header>
 
-        <div className="p-8">
+        {/* 
+           Using key={refreshKey} forces the module components to unmount and remount 
+           when connection recovery significantly updates the key. 
+           This clears old "Loading..." states and fetches fresh data.
+        */}
+        <div className="p-8" key={refreshKey}>
           {activeModule === 'dashboard' && <Dashboard />}
           {activeModule === 'leads' && <LeadsModule />}
           {activeModule === 'pipeline' && <PipelineKanban />}
@@ -291,23 +300,25 @@ function AppContent() {
 function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <BranchProvider>
-          <NotificationProvider>
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route
-                path="/*"
-                element={
-                  <ProtectedRoute>
-                    <AppContent />
-                  </ProtectedRoute>
-                }
-              />
-            </Routes>
-          </NotificationProvider>
-        </BranchProvider>
-      </AuthProvider>
+      <ConnectionProvider>
+        <AuthProvider>
+          <BranchProvider>
+            <NotificationProvider>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route
+                  path="/*"
+                  element={
+                    <ProtectedRoute>
+                      <AppContent />
+                    </ProtectedRoute>
+                  }
+                />
+              </Routes>
+            </NotificationProvider>
+          </BranchProvider>
+        </AuthProvider>
+      </ConnectionProvider>
     </BrowserRouter>
   );
 }
