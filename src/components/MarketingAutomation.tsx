@@ -1,21 +1,28 @@
-import { useState, useEffect } from 'react';
-import { supabase, WhatsAppTemplate, CampaignAudience, AutomatedCampaign, Lead, Client, CatalogItem } from '../lib/supabase';
+﻿import { useState, useEffect } from 'react';
+import { supabase, WhatsAppTemplate, CampaignAudience, AutomatedCampaign, Lead, Client } from '../lib/supabase';
 import { useBranch } from '../contexts/BranchContext';
-import { Mail, Users, TrendingUp, Send, MessageSquare, Target, Calendar, Zap, Plus, X, CreditCard as Edit2, Play, Pause, Trash2, Eye, Filter, Gift, Loader2, Smartphone, Type, Link as LinkIcon, Phone, DollarSign, Bike, Clock, MapPin, Tag, BarChart3, ChevronDown, ChevronUp, Hash } from 'lucide-react';
+import { Upload, Mail, Users, TrendingUp, Send, MessageSquare, Target, Zap, Plus, X, CreditCard as Edit2, Play, Pause, Trash2, Filter, Gift, Loader2, Type, Link as LinkIcon, Phone, BarChart3, Hash, DollarSign, Bike, Clock, MapPin, Tag } from 'lucide-react';
 
 
 type ViewMode = 'overview' | 'templates' | 'campaigns' | 'audiences';
 
-const PhonePreview = ({ message, buttons }: { message: string, buttons: any[] }) => {
+const PhonePreview = ({ message, buttons, header_image }: { message: string, buttons: any[], header_image?: string | null }) => {
   const formattedMessage = message.replace(/\n/g, '<br />');
 
   return (
     <div className="w-[300px] h-[600px] bg-gray-900 rounded-[3rem] p-4 border-8 border-gray-800 shadow-2xl relative overflow-hidden mx-auto">
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-gray-800 rounded-b-xl z-20"></div>
       <div className="h-full bg-[#121b22] rounded-[2rem] overflow-y-auto pt-10 px-2 relative" style={{ backgroundImage: 'url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")', backgroundRepeat: 'repeat' }}>
-        <div className="bg-[#202c33] rounded-lg p-3 shadow-sm max-w-[90%] mb-2 relative">
-          <p className="text-white text-sm whitespace-pre-wrap leading-relaxed" dangerouslySetInnerHTML={{ __html: formattedMessage || 'Vista previa del mensaje...' }}></p>
-          <div className="text-[10px] text-gray-400 text-right mt-1">12:00 PM</div>
+        <div className="bg-[#202c33] rounded-lg shadow-sm max-w-[90%] mb-2 relative overflow-hidden">
+          {header_image && (
+            <div className="w-full h-32 bg-gray-700">
+              <img src={header_image} alt="Header" className="w-full h-full object-cover" />
+            </div>
+          )}
+          <div className="p-3">
+            <p className="text-white text-sm whitespace-pre-wrap leading-relaxed" dangerouslySetInnerHTML={{ __html: formattedMessage || 'Vista previa del mensaje...' }}></p>
+            <div className="text-[10px] text-gray-400 text-right mt-1">12:00 PM</div>
+          </div>
         </div>
         {buttons && buttons.map((btn, idx) => (
           <div key={idx} className="bg-[#202c33] rounded-lg p-3 shadow-sm max-w-[90%] mb-2 text-center text-[#53bdeb] font-semibold text-sm cursor-pointer hover:bg-[#2a3942]">
@@ -33,7 +40,7 @@ const PhonePreview = ({ message, buttons }: { message: string, buttons: any[] })
 const VariableInserter = ({ onInsert }: { onInsert: (val: string) => void }) => {
   return (
     <div className="flex flex-wrap gap-2 mb-2 p-2 bg-gray-50 rounded-lg border border-gray-200">
-      <span className="text-xs font-bold text-gray-500 w-full uppercase tracking-wider">Variables Dinámicas</span>
+      <span className="text-xs font-bold text-gray-500 w-full uppercase tracking-wider">Variables DinÃ¡micas</span>
       {[
         { label: 'Nombre Cliente', val: '{{nombre}}' },
         { label: 'Modelo Moto', val: '{{modelo}}' },
@@ -67,20 +74,30 @@ export function MarketingAutomation() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [catalogModels, setCatalogModels] = useState<string[]>([]);
   const [financingTypes, setFinancingTypes] = useState<string[]>([]);
-  const [audiencePreviewCount, setAudiencePreviewCount] = useState(0);
+
 
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [showCampaignModal, setShowCampaignModal] = useState(false);
   const [showAudienceModal, setShowAudienceModal] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<WhatsAppTemplate | null>(null);
-  const [editingCampaign, setEditingCampaign] = useState<AutomatedCampaign | null>(null);
 
-  const [newTemplate, setNewTemplate] = useState({
+
+  const [newTemplate, setNewTemplate] = useState<{
+    name: string;
+    category: string;
+    message_template: string;
+    header_type: 'NONE' | 'IMAGE';
+    header_image: string | null;
+    buttons: any[];
+    active: boolean;
+  }>({
     name: '',
     category: 'promotional',
     message_template: '',
-    active: true,
-    buttons: [] as { type: 'QUICK_REPLY' | 'URL' | 'PHONE_NUMBER', text: string, value?: string }[]
+    header_type: 'NONE',
+    header_image: null,
+    buttons: [],
+    active: true
   });
 
   const [newCampaign, setNewCampaign] = useState({
@@ -198,6 +215,22 @@ export function MarketingAutomation() {
     if (data) setClients(data);
   };
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert('La imagen no debe superar los 5MB');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setNewTemplate({ ...newTemplate, header_image: reader.result as string });
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleCreateTemplate = async () => {
     try {
       setIsSubmitting(true);
@@ -217,11 +250,11 @@ export function MarketingAutomation() {
         throw new Error(result.error || 'Error al crear plantilla');
       }
 
-      setSuccessMessage('Plantilla creada y enviada a revisión en WhatsApp');
+      setSuccessMessage('Plantilla creada y enviada a revisiÃ³n en WhatsApp');
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
       setShowTemplateModal(false);
-      setNewTemplate({ name: '', category: 'promotional', message_template: '', active: true });
+      setNewTemplate({ name: '', category: 'promotional', message_template: '', header_type: 'NONE', header_image: null, buttons: [], active: true });
       loadTemplates();
 
     } catch (error: any) {
@@ -247,13 +280,13 @@ export function MarketingAutomation() {
       setTimeout(() => setShowSuccess(false), 3000);
       setShowTemplateModal(false);
       setEditingTemplate(null);
-      setNewTemplate({ name: '', category: 'promotional', message_template: '', active: true });
+      setNewTemplate({ name: '', category: 'promotional', message_template: '', header_type: 'NONE', header_image: null, buttons: [], active: true });
       loadTemplates();
     }
   };
 
   const handleDeleteTemplate = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar esta plantilla?')) return;
+    if (!confirm('Â¿EstÃ¡s seguro de eliminar esta plantilla?')) return;
 
     const { error } = await supabase
       .from('whatsapp_templates')
@@ -329,7 +362,7 @@ export function MarketingAutomation() {
       .insert([campaignData]);
 
     if (!error) {
-      setSuccessMessage('Campaña creada exitosamente');
+      setSuccessMessage('CampaÃ±a creada exitosamente');
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
       setShowCampaignModal(false);
@@ -347,7 +380,7 @@ export function MarketingAutomation() {
       .eq('id', campaign.id);
 
     if (!error) {
-      setSuccessMessage(`Campaña ${newStatus === 'active' ? 'activada' : 'pausada'}`);
+      setSuccessMessage(`CampaÃ±a ${newStatus === 'active' ? 'activada' : 'pausada'}`);
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
       loadAutomatedCampaigns();
@@ -355,10 +388,10 @@ export function MarketingAutomation() {
   };
 
   const handleSendCampaign = async (campaign: AutomatedCampaign) => {
-    if (!confirm(`¿Estás seguro de enviar la campaña "${campaign.name}" ahora? Esto enviará mensajes a todos los contactos de la audiencia.`)) return;
+    if (!confirm(`Â¿EstÃ¡s seguro de enviar la campaÃ±a "${campaign.name}" ahora? Esto enviarÃ¡ mensajes a todos los contactos de la audiencia.`)) return;
 
     try {
-      setSuccessMessage('Iniciando envío de campaña...');
+      setSuccessMessage('Iniciando envÃ­o de campaÃ±a...');
       setShowSuccess(true);
 
       const response = await fetch('/api/marketing?action=send_campaign', {
@@ -372,12 +405,12 @@ export function MarketingAutomation() {
       const data = await response.json();
 
       if (response.ok) {
-        setSuccessMessage(`Campaña enviada: ${data.sent} mensajes. ${data.errors > 0 ? `Errores: ${data.errors}` : ''}`);
+        setSuccessMessage(`CampaÃ±a enviada: ${data.sent} mensajes. ${data.errors > 0 ? `Errores: ${data.errors}` : ''}`);
         setShowSuccess(true);
         setTimeout(() => setShowSuccess(false), 5000);
         loadAutomatedCampaigns();
       } else {
-        throw new Error(data.error || 'Error al enviar campaña');
+        throw new Error(data.error || 'Error al enviar campaÃ±a');
       }
     } catch (error: any) {
       console.error('Error sending campaign:', error);
@@ -387,7 +420,7 @@ export function MarketingAutomation() {
   };
 
   const handleDeleteCampaign = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar esta campaña?')) return;
+    if (!confirm('Â¿EstÃ¡s seguro de eliminar esta campaÃ±a?')) return;
 
     const { error } = await supabase
       .from('automated_campaigns')
@@ -395,7 +428,7 @@ export function MarketingAutomation() {
       .eq('id', id);
 
     if (!error) {
-      setSuccessMessage('Campaña eliminada');
+      setSuccessMessage('CampaÃ±a eliminada');
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
       loadAutomatedCampaigns();
@@ -406,11 +439,11 @@ export function MarketingAutomation() {
     // Check if audience is used in any campaign
     const isUsed = automatedCampaigns.some(c => c.audience_id === id);
     if (isUsed) {
-      alert('No se puede eliminar esta audiencia porque está siendo utilizada en una o más campañas. Elimina o modifica las campañas primero.');
+      alert('No se puede eliminar esta audiencia porque estÃ¡ siendo utilizada en una o mÃ¡s campaÃ±as. Elimina o modifica las campaÃ±as primero.');
       return;
     }
 
-    if (!confirm('¿Estás seguro de eliminar esta audiencia?')) return;
+    if (!confirm('Â¿EstÃ¡s seguro de eliminar esta audiencia?')) return;
 
     const { error } = await supabase
       .from('campaign_audiences')
@@ -500,7 +533,10 @@ export function MarketingAutomation() {
       name: template.name,
       category: template.category,
       message_template: template.message_template,
-      active: template.active
+      active: template.active,
+      header_type: 'NONE',
+      header_image: null,
+      buttons: []
     });
     setShowTemplateModal(true);
   };
@@ -538,7 +574,7 @@ export function MarketingAutomation() {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
           <Mail className="w-7 h-7 text-blue-600" />
-          Marketing Automation & Campañas
+          Marketing Automation & CampaÃ±as
         </h2>
       </div>
 
@@ -596,7 +632,7 @@ export function MarketingAutomation() {
           >
             <div className="flex items-center justify-center gap-2">
               <Send className="w-5 h-5" />
-              Campañas ({automatedCampaigns.length})
+              CampaÃ±as ({automatedCampaigns.length})
             </div>
           </button>
         </div>
@@ -614,7 +650,7 @@ export function MarketingAutomation() {
                     </div>
                   </div>
                   <div className="text-sm font-semibold mt-2">Clientes Vigentes</div>
-                  <div className="text-xs opacity-80 mt-1">Base activa para campañas</div>
+                  <div className="text-xs opacity-80 mt-1">Base activa para campaÃ±as</div>
                 </div>
 
                 <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg shadow-lg p-6 text-white">
@@ -626,7 +662,7 @@ export function MarketingAutomation() {
                     </div>
                   </div>
                   <div className="text-sm font-semibold mt-2">Clientes No Vigentes</div>
-                  <div className="text-xs opacity-80 mt-1">Oportunidad de reactivación</div>
+                  <div className="text-xs opacity-80 mt-1">Oportunidad de reactivaciÃ³n</div>
                 </div>
 
                 <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white">
@@ -646,18 +682,18 @@ export function MarketingAutomation() {
                     <Gift className="w-8 h-8 opacity-80" />
                     <div className="text-right">
                       <div className="text-3xl font-bold">{getBirthdaysThisMonth().length}</div>
-                      <div className="text-xs opacity-90 mt-1">cumpleaños</div>
+                      <div className="text-xs opacity-90 mt-1">cumpleaÃ±os</div>
                     </div>
                   </div>
                   <div className="text-sm font-semibold mt-2">Este Mes</div>
-                  <div className="text-xs opacity-80 mt-1">Automatización activa</div>
+                  <div className="text-xs opacity-80 mt-1">AutomatizaciÃ³n activa</div>
                 </div>
               </div>
 
               <div className="bg-gradient-to-br from-blue-50 to-green-50 rounded-lg p-6 border-2 border-blue-200">
                 <h4 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
                   <Zap className="w-6 h-6 text-blue-600" />
-                  Campañas Activas
+                  CampaÃ±as Activas
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {automatedCampaigns.filter(c => c.status === 'active').map(campaign => {
@@ -671,7 +707,7 @@ export function MarketingAutomation() {
                           </span>
                         </div>
                         <div className="text-sm text-gray-600 mb-3">
-                          <div>Tipo: {campaign.type === 'triggered' ? 'Automática' : 'Programada'}</div>
+                          <div>Tipo: {campaign.type === 'triggered' ? 'AutomÃ¡tica' : 'Programada'}</div>
                           {audience && <div>Audiencia: {audience.name}</div>}
                         </div>
                         <div className="grid grid-cols-3 gap-2 text-center">
@@ -693,7 +729,7 @@ export function MarketingAutomation() {
                   })}
                   {automatedCampaigns.filter(c => c.status === 'active').length === 0 && (
                     <div className="col-span-2 text-center py-8 text-gray-500">
-                      No hay campañas activas en este momento
+                      No hay campaÃ±as activas en este momento
                     </div>
                   )}
                 </div>
@@ -703,24 +739,24 @@ export function MarketingAutomation() {
                 <h4 className="text-lg font-semibold text-gray-700 mb-3">Funcionalidades Disponibles</h4>
                 <ul className="space-y-2 text-sm text-gray-700">
                   <li className="flex items-start gap-2">
-                    <span className="text-blue-600 font-bold">✓</span>
-                    <span>Segmentación precisa por estado, modelo, score y más</span>
+                    <span className="text-blue-600 font-bold">âœ“</span>
+                    <span>SegmentaciÃ³n precisa por estado, modelo, score y mÃ¡s</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-blue-600 font-bold">✓</span>
-                    <span>Plantillas personalizables con variables dinámicas</span>
+                    <span className="text-blue-600 font-bold">âœ“</span>
+                    <span>Plantillas personalizables con variables dinÃ¡micas</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-blue-600 font-bold">✓</span>
-                    <span>Automatización de cumpleaños con envío automático</span>
+                    <span className="text-blue-600 font-bold">âœ“</span>
+                    <span>AutomatizaciÃ³n de cumpleaÃ±os con envÃ­o automÃ¡tico</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-blue-600 font-bold">✓</span>
-                    <span>Campañas programadas y triggered</span>
+                    <span className="text-blue-600 font-bold">âœ“</span>
+                    <span>CampaÃ±as programadas y triggered</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-blue-600 font-bold">✓</span>
-                    <span>Tracking en tiempo real de métricas de campaña</span>
+                    <span className="text-blue-600 font-bold">âœ“</span>
+                    <span>Tracking en tiempo real de mÃ©tricas de campaÃ±a</span>
                   </li>
                 </ul>
               </div>
@@ -759,7 +795,7 @@ export function MarketingAutomation() {
                   <button
                     onClick={() => {
                       setEditingTemplate(null);
-                      setNewTemplate({ name: '', category: 'promotional', message_template: '', active: true });
+                      setNewTemplate({ name: '', category: 'promotional', message_template: '', header_type: 'NONE', header_image: null, buttons: [], active: true });
                       setShowTemplateModal(true);
                     }}
                     className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold transition-all"
@@ -842,7 +878,7 @@ export function MarketingAutomation() {
                       <div>
                         <h4 className="font-bold text-gray-800 mb-2">{audience.name}</h4>
                         <span className={`inline-block px-2.5 py-1 text-xs font-bold rounded-full ${audience.target_type === 'leads' ? 'bg-blue-100 text-blue-700' : audience.target_type === 'clients' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}>
-                          {audience.target_type === 'leads' ? '🎯 Leads' : audience.target_type === 'clients' ? '👥 Clientes' : '🔄 Mixto'}
+                          {audience.target_type === 'leads' ? 'ðŸŽ¯ Leads' : audience.target_type === 'clients' ? 'ðŸ‘¥ Clientes' : 'ðŸ”„ Mixto'}
                         </span>
                       </div>
                       <div className="text-right">
@@ -862,9 +898,9 @@ export function MarketingAutomation() {
                     <div className="flex flex-wrap gap-1.5 mt-3">
                       {Object.entries(audience.filters).map(([key, value]) => {
                         const filterLabels: Record<string, string> = {
-                          status: 'Estado', model_interested: 'Modelo', timeframe: 'Tiempo', score_min: 'Score ≥', origin: 'Origen', financing_type: 'Financiamiento', requires_financing: 'Req. Financ.', test_drive: 'Test Drive', purchase_type: 'Tipo Compra', price_min: 'Precio ≥', price_max: 'Precio ≤', birthday_month: 'Cumpleaños', last_purchase_days: 'Recencia'
+                          status: 'Estado', model_interested: 'Modelo', timeframe: 'Tiempo', score_min: 'Score â‰¥', origin: 'Origen', financing_type: 'Financiamiento', requires_financing: 'Req. Financ.', test_drive: 'Test Drive', purchase_type: 'Tipo Compra', price_min: 'Precio â‰¥', price_max: 'Precio â‰¤', birthday_month: 'CumpleaÃ±os', last_purchase_days: 'Recencia'
                         };
-                        const displayVal = key === 'requires_financing' ? (value ? 'Sí' : 'No') : key === 'birthday_month' ? (value === 'current' ? 'Este Mes' : ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][parseInt(value as string)]) : key === 'last_purchase_days' ? `${value} días` : key === 'price_min' || key === 'price_max' ? `$${Number(value).toLocaleString()}` : String(value);
+                        const displayVal = key === 'requires_financing' ? (value ? 'SÃ­' : 'No') : key === 'birthday_month' ? (value === 'current' ? 'Este Mes' : ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][parseInt(value as string)]) : key === 'last_purchase_days' ? `${value} dÃ­as` : key === 'price_min' || key === 'price_max' ? `$${Number(value).toLocaleString()}` : String(value);
                         return (
                           <span key={key} className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700 border border-gray-200">
                             <Filter className="w-3 h-3 text-gray-400" />
@@ -873,7 +909,7 @@ export function MarketingAutomation() {
                         );
                       })}
                       {Object.keys(audience.filters).length === 0 && (
-                        <span className="text-xs text-gray-400 italic">Sin filtros — todos los contactos</span>
+                        <span className="text-xs text-gray-400 italic">Sin filtros â€” todos los contactos</span>
                       )}
                     </div>
                   </div>
@@ -885,17 +921,17 @@ export function MarketingAutomation() {
           {viewMode === 'campaigns' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-700">Campañas Automatizadas</h3>
+                <h3 className="text-lg font-semibold text-gray-700">CampaÃ±as Automatizadas</h3>
                 <button
                   onClick={() => {
-                    setEditingCampaign(null);
+
                     setNewCampaign({ name: '', type: 'scheduled', trigger_type: null, template_id: '', audience_id: '', schedule_date: '', status: 'draft' });
                     setShowCampaignModal(true);
                   }}
                   className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold transition-all"
                 >
                   <Plus className="w-5 h-5" />
-                  Nueva Campaña
+                  Nueva CampaÃ±a
                 </button>
               </div>
 
@@ -914,7 +950,7 @@ export function MarketingAutomation() {
                               {campaign.status}
                             </span>
                             <span className="px-2 py-1 text-xs font-bold rounded bg-gray-100 text-gray-800 border border-gray-300">
-                              {campaign.type === 'triggered' ? 'Automática' : 'Programada'}
+                              {campaign.type === 'triggered' ? 'AutomÃ¡tica' : 'Programada'}
                             </span>
                             {campaign.trigger_type && (
                               <span className="px-2 py-1 text-xs font-bold rounded bg-orange-100 text-orange-800 border border-orange-300">
@@ -1031,10 +1067,10 @@ export function MarketingAutomation() {
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all placeholder-gray-400"
                     placeholder="Ej: Oferta_Febrero_2025"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Solo letras minúsculas, números y guiones bajos.</p>
+                  <p className="text-xs text-gray-500 mt-1">Solo letras minÃºsculas, nÃºmeros y guiones bajos.</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Categoría</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">CategorÃ­a</label>
                   <select
                     value={newTemplate.category}
                     onChange={(e) => setNewTemplate({ ...newTemplate, category: e.target.value })}
@@ -1046,13 +1082,52 @@ export function MarketingAutomation() {
                 </div>
 
                 <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Tipo de Encabezado</label>
+                  <select
+                    value={newTemplate.header_type}
+                    onChange={(e) => setNewTemplate({ ...newTemplate, header_type: e.target.value as 'NONE' | 'IMAGE', header_image: null })}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all bg-white mb-3"
+                  >
+                    <option value="NONE">Sin Encabezado</option>
+                    <option value="IMAGE">Imagen</option>
+                  </select>
+
+                  {newTemplate.header_type === 'IMAGE' && (
+                    <div className="mb-4">
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Imagen de Ejemplo (para revisión)</label>
+                      <div className="flex items-center justify-center w-full">
+                        <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                          <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                            <Upload className="w-8 h-8 mb-3 text-gray-400" />
+                            <p className="mb-2 text-sm text-gray-500"><span className="font-semibold">Click para subir</span> o arrastra</p>
+                            <p className="text-xs text-gray-500">PNG, JPG (MAX. 5MB)</p>
+                          </div>
+                          <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
+                        </label>
+                      </div>
+                      {newTemplate.header_image && (
+                        <div className="mt-2 relative w-full h-40 bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
+                          <img src={newTemplate.header_image} alt="Preview" className="w-full h-full object-cover" />
+                          <button
+                            onClick={() => setNewTemplate({ ...newTemplate, header_image: null })}
+                            className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full hover:bg-red-600"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Mensaje del Cuerpo</label>
                   <VariableInserter onInsert={(val) => setNewTemplate({ ...newTemplate, message_template: newTemplate.message_template + ' ' + val })} />
                   <textarea
                     value={newTemplate.message_template}
                     onChange={(e) => setNewTemplate({ ...newTemplate, message_template: e.target.value })}
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none h-40 resize-none transition-all"
-                    placeholder="Escribe tu mensaje aquí..."
+                    placeholder="Escribe tu mensaje aquÃ­..."
                   />
                 </div>
 
@@ -1061,7 +1136,7 @@ export function MarketingAutomation() {
                   <div className="space-y-2">
                     {newTemplate.buttons?.map((btn, idx) => (
                       <div key={idx} className="flex gap-2 items-center bg-gray-50 p-2 rounded-lg border border-gray-200">
-                        <span className="text-xs font-bold text-gray-500 w-16">{btn.type === 'QUICK_REPLY' ? 'Respuesta' : btn.type === 'URL' ? 'Enlace' : 'Teléfono'}</span>
+                        <span className="text-xs font-bold text-gray-500 w-16">{btn.type === 'QUICK_REPLY' ? 'Respuesta' : btn.type === 'URL' ? 'Enlace' : 'TelÃ©fono'}</span>
                         <input
                           type="text"
                           value={btn.text}
@@ -1071,7 +1146,7 @@ export function MarketingAutomation() {
                             setNewTemplate({ ...newTemplate, buttons: newButtons });
                           }}
                           className="flex-1 text-sm bg-white border border-gray-200 rounded px-2 py-1"
-                          placeholder="Texto del botón"
+                          placeholder="Texto del botÃ³n"
                         />
                         {btn.type !== 'QUICK_REPLY' && (
                           <input
@@ -1097,7 +1172,7 @@ export function MarketingAutomation() {
                     {(!newTemplate.buttons || newTemplate.buttons.length < 3) && (
                       <div className="flex gap-2 mt-2">
                         <button onClick={() => setNewTemplate({ ...newTemplate, buttons: [...(newTemplate.buttons || []), { type: 'QUICK_REPLY', text: '' }] })} className="text-xs flex items-center gap-1 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-full transition-colors text-gray-700 font-medium">
-                          <Plus className="w-3 h-3" /> Respuesta Rápida
+                          <Plus className="w-3 h-3" /> Respuesta RÃ¡pida
                         </button>
                         <button onClick={() => setNewTemplate({ ...newTemplate, buttons: [...(newTemplate.buttons || []), { type: 'URL', text: '', value: '' }] })} className="text-xs flex items-center gap-1 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-full transition-colors text-gray-700 font-medium">
                           <Plus className="w-3 h-3" /> Enlace
@@ -1109,7 +1184,6 @@ export function MarketingAutomation() {
                     )}
                   </div>
                 </div>
-
               </div>
               <div className="p-6 border-t border-gray-100 bg-gray-50 flex gap-3">
                 <button
@@ -1127,7 +1201,7 @@ export function MarketingAutomation() {
             <div className="w-1/2 bg-gray-50 flex items-center justify-center relative pattern-dots p-8 border-l border-gray-200">
               <div className="absolute inset-0 opacity-[0.03] pattern-grid-lg pointer-events-none"></div>
               <div className="scale-[0.85] transform origin-center">
-                <PhonePreview message={newTemplate.message_template} buttons={newTemplate.buttons} />
+                <PhonePreview message={newTemplate.message_template} buttons={newTemplate.buttons} header_image={newTemplate.header_image} />
               </div>
               <div className="absolute bottom-6 text-center w-full text-xs text-gray-400">
                 Vista previa aproximada. El aspecto real puede variar según el dispositivo.
@@ -1145,7 +1219,7 @@ export function MarketingAutomation() {
               <div className="px-8 py-5 border-b border-gray-100 flex items-center justify-between bg-white">
                 <div>
                   <h3 className="text-xl font-bold text-gray-900 tracking-tight">Constructor de Audiencia</h3>
-                  <p className="text-xs text-gray-500 mt-1">Segmenta tu base de datos con precisión quirúrgica</p>
+                  <p className="text-xs text-gray-500 mt-1">Segmenta tu base de datos con precisiÃ³n quirÃºrgica</p>
                 </div>
                 <button onClick={() => setShowAudienceModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
                   <X className="w-6 h-6" />
@@ -1162,9 +1236,9 @@ export function MarketingAutomation() {
                   <div>
                     <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase tracking-wider">Tipo de Audiencia</label>
                     <select value={newAudience.target_type} onChange={(e) => setNewAudience({ ...newAudience, target_type: e.target.value })} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white">
-                      <option value="leads">🎯 Solo Leads</option>
-                      <option value="clients">👥 Solo Clientes</option>
-                      <option value="mixed">🔄 Leads y Clientes</option>
+                      <option value="leads">ðŸŽ¯ Solo Leads</option>
+                      <option value="clients">ðŸ‘¥ Solo Clientes</option>
+                      <option value="mixed">ðŸ”„ Leads y Clientes</option>
                     </select>
                   </div>
                 </div>
@@ -1178,9 +1252,9 @@ export function MarketingAutomation() {
                         <label className="block text-xs font-semibold text-gray-600 mb-1">Temperatura</label>
                         <select value={newAudience.status_filter} onChange={(e) => setNewAudience({ ...newAudience, status_filter: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none">
                           <option value="">Todos</option>
-                          <option value="Verde">🟢 Verde (Caliente)</option>
-                          <option value="Amarillo">🟡 Amarillo (Tibio)</option>
-                          <option value="Rojo">🔴 Rojo (Frío)</option>
+                          <option value="Verde">ðŸŸ¢ Verde (Caliente)</option>
+                          <option value="Amarillo">ðŸŸ¡ Amarillo (Tibio)</option>
+                          <option value="Rojo">ðŸ”´ Rojo (FrÃ­o)</option>
                         </select>
                       </div>
                       <div>
@@ -1193,20 +1267,20 @@ export function MarketingAutomation() {
                           <option value="Showroom">Showroom</option>
                           <option value="Referido">Referido</option>
                           <option value="Web">Web</option>
-                          <option value="Teléfono">Teléfono</option>
+                          <option value="TelÃ©fono">TelÃ©fono</option>
                         </select>
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-1">Score Mínimo</label>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Score MÃ­nimo</label>
                         <input type="number" value={newAudience.score_min} onChange={(e) => setNewAudience({ ...newAudience, score_min: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="0-100" min="0" max="100" />
                       </div>
                       <div>
                         <label className="block text-xs font-semibold text-gray-600 mb-1">Timeframe</label>
                         <select value={newAudience.timeframe_filter} onChange={(e) => setNewAudience({ ...newAudience, timeframe_filter: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none">
                           <option value="">Todos</option>
-                          <option value="Inmediato">⚡ Inmediato</option>
-                          <option value="Pronto">🔜 Pronto</option>
-                          <option value="Futuro">📅 Futuro</option>
+                          <option value="Inmediato">âš¡ Inmediato</option>
+                          <option value="Pronto">ðŸ”œ Pronto</option>
+                          <option value="Futuro">ðŸ“… Futuro</option>
                         </select>
                       </div>
                       <div>
@@ -1231,7 +1305,7 @@ export function MarketingAutomation() {
                         <label className="block text-xs font-semibold text-gray-600 mb-1">Requiere Financiamiento</label>
                         <select value={newAudience.requires_financing_filter} onChange={(e) => setNewAudience({ ...newAudience, requires_financing_filter: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-green-500 outline-none">
                           <option value="">Todos</option>
-                          <option value="true">Sí, requiere</option>
+                          <option value="true">SÃ­, requiere</option>
                           <option value="false">No, pago de contado</option>
                         </select>
                       </div>
@@ -1251,18 +1325,18 @@ export function MarketingAutomation() {
                   <h4 className="text-sm font-bold text-purple-800 mb-3 flex items-center gap-2"><Bike className="w-4 h-4" /> Producto / Modelo</h4>
                   <div className="grid grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1">{newAudience.target_type === 'clients' ? 'Modelo Comprado' : 'Modelo de Interés'}</label>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">{newAudience.target_type === 'clients' ? 'Modelo Comprado' : 'Modelo de InterÃ©s'}</label>
                       <select value={newAudience.model_filter} onChange={(e) => setNewAudience({ ...newAudience, model_filter: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-purple-500 outline-none">
                         <option value="">Todos los modelos</option>
                         {catalogModels.map(m => <option key={m} value={m}>{m}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1">Precio Mín ($)</label>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Precio MÃ­n ($)</label>
                       <input type="number" value={newAudience.price_min} onChange={(e) => setNewAudience({ ...newAudience, price_min: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-purple-500 outline-none" placeholder="50,000" />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1">Precio Máx ($)</label>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Precio MÃ¡x ($)</label>
                       <input type="number" value={newAudience.price_max} onChange={(e) => setNewAudience({ ...newAudience, price_max: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-purple-500 outline-none" placeholder="300,000" />
                     </div>
                   </div>
@@ -1286,18 +1360,18 @@ export function MarketingAutomation() {
                         <select value={newAudience.purchase_type_filter} onChange={(e) => setNewAudience({ ...newAudience, purchase_type_filter: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 outline-none">
                           <option value="">Todos</option>
                           <option value="Contado">Contado</option>
-                          <option value="Crédito">Crédito</option>
+                          <option value="CrÃ©dito">CrÃ©dito</option>
                         </select>
                       </div>
                       <div className="col-span-2">
-                        <label className="block text-xs font-semibold text-gray-600 mb-1">Compró en los últimos...</label>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">ComprÃ³ en los Ãºltimos...</label>
                         <select value={newAudience.last_purchase_days} onChange={(e) => setNewAudience({ ...newAudience, last_purchase_days: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 outline-none">
                           <option value="">Sin filtro de recencia</option>
-                          <option value="30">Últimos 30 días</option>
-                          <option value="60">Últimos 60 días</option>
-                          <option value="90">Últimos 90 días</option>
-                          <option value="180">Últimos 6 meses</option>
-                          <option value="365">Último año</option>
+                          <option value="30">Ãšltimos 30 dÃ­as</option>
+                          <option value="60">Ãšltimos 60 dÃ­as</option>
+                          <option value="90">Ãšltimos 90 dÃ­as</option>
+                          <option value="180">Ãšltimos 6 meses</option>
+                          <option value="365">Ãšltimo aÃ±o</option>
                         </select>
                       </div>
                     </div>
@@ -1306,10 +1380,10 @@ export function MarketingAutomation() {
 
                 {/* SECTION: Birthday */}
                 <div className="bg-gradient-to-r from-pink-50 to-rose-50 rounded-xl p-4 border border-pink-100">
-                  <h4 className="text-sm font-bold text-pink-800 mb-3 flex items-center gap-2"><Gift className="w-4 h-4" /> Cumpleaños</h4>
+                  <h4 className="text-sm font-bold text-pink-800 mb-3 flex items-center gap-2"><Gift className="w-4 h-4" /> CumpleaÃ±os</h4>
                   <select value={newAudience.birthday_month_filter} onChange={(e) => setNewAudience({ ...newAudience, birthday_month_filter: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-pink-500 outline-none">
-                    <option value="">Sin filtro de cumpleaños</option>
-                    <option value="current">🎂 Este mes</option>
+                    <option value="">Sin filtro de cumpleaÃ±os</option>
+                    <option value="current">ðŸŽ‚ Este mes</option>
                     <option value="0">Enero</option>
                     <option value="1">Febrero</option>
                     <option value="2">Marzo</option>
@@ -1355,17 +1429,17 @@ export function MarketingAutomation() {
                   {newAudience.status_filter && <div className="text-xs bg-white rounded-lg px-3 py-2 border border-gray-200 flex items-center gap-2"><Tag className="w-3 h-3 text-blue-500" /> Estado: <strong>{newAudience.status_filter}</strong></div>}
                   {newAudience.model_filter && <div className="text-xs bg-white rounded-lg px-3 py-2 border border-gray-200 flex items-center gap-2"><Bike className="w-3 h-3 text-purple-500" /> Modelo: <strong>{newAudience.model_filter}</strong></div>}
                   {newAudience.origin_filter && <div className="text-xs bg-white rounded-lg px-3 py-2 border border-gray-200 flex items-center gap-2"><MapPin className="w-3 h-3 text-green-500" /> Origen: <strong>{newAudience.origin_filter}</strong></div>}
-                  {newAudience.score_min && <div className="text-xs bg-white rounded-lg px-3 py-2 border border-gray-200 flex items-center gap-2"><Hash className="w-3 h-3 text-orange-500" /> Score ≥ <strong>{newAudience.score_min}</strong></div>}
+                  {newAudience.score_min && <div className="text-xs bg-white rounded-lg px-3 py-2 border border-gray-200 flex items-center gap-2"><Hash className="w-3 h-3 text-orange-500" /> Score â‰¥ <strong>{newAudience.score_min}</strong></div>}
                   {newAudience.timeframe_filter && <div className="text-xs bg-white rounded-lg px-3 py-2 border border-gray-200 flex items-center gap-2"><Clock className="w-3 h-3 text-indigo-500" /> Timeframe: <strong>{newAudience.timeframe_filter}</strong></div>}
                   {newAudience.financing_type_filter && <div className="text-xs bg-white rounded-lg px-3 py-2 border border-gray-200 flex items-center gap-2"><DollarSign className="w-3 h-3 text-green-500" /> Financiamiento: <strong>{newAudience.financing_type_filter}</strong></div>}
-                  {newAudience.requires_financing_filter && <div className="text-xs bg-white rounded-lg px-3 py-2 border border-gray-200 flex items-center gap-2"><DollarSign className="w-3 h-3 text-green-500" /> Req. Financiamiento: <strong>{newAudience.requires_financing_filter === 'true' ? 'Sí' : 'No'}</strong></div>}
+                  {newAudience.requires_financing_filter && <div className="text-xs bg-white rounded-lg px-3 py-2 border border-gray-200 flex items-center gap-2"><DollarSign className="w-3 h-3 text-green-500" /> Req. Financiamiento: <strong>{newAudience.requires_financing_filter === 'true' ? 'SÃ­' : 'No'}</strong></div>}
                   {newAudience.test_drive_filter && <div className="text-xs bg-white rounded-lg px-3 py-2 border border-gray-200 flex items-center gap-2"><Bike className="w-3 h-3 text-blue-500" /> Test Drive: <strong>{newAudience.test_drive_filter === 'requested' ? 'Solicitado' : newAudience.test_drive_filter === 'completed' ? 'Completado' : 'No Solicitado'}</strong></div>}
                   {newAudience.purchase_type_filter && <div className="text-xs bg-white rounded-lg px-3 py-2 border border-gray-200 flex items-center gap-2"><Tag className="w-3 h-3 text-orange-500" /> Tipo Compra: <strong>{newAudience.purchase_type_filter}</strong></div>}
-                  {(newAudience.price_min || newAudience.price_max) && <div className="text-xs bg-white rounded-lg px-3 py-2 border border-gray-200 flex items-center gap-2"><DollarSign className="w-3 h-3 text-green-500" /> Precio: <strong>${newAudience.price_min || '0'} - ${newAudience.price_max || '∞'}</strong></div>}
-                  {newAudience.birthday_month_filter && <div className="text-xs bg-white rounded-lg px-3 py-2 border border-gray-200 flex items-center gap-2"><Gift className="w-3 h-3 text-pink-500" /> Cumpleaños: <strong>{newAudience.birthday_month_filter === 'current' ? 'Este Mes' : ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][parseInt(newAudience.birthday_month_filter)]}</strong></div>}
-                  {newAudience.last_purchase_days && <div className="text-xs bg-white rounded-lg px-3 py-2 border border-gray-200 flex items-center gap-2"><Clock className="w-3 h-3 text-orange-500" /> Recencia: <strong>Últimos {newAudience.last_purchase_days} días</strong></div>}
+                  {(newAudience.price_min || newAudience.price_max) && <div className="text-xs bg-white rounded-lg px-3 py-2 border border-gray-200 flex items-center gap-2"><DollarSign className="w-3 h-3 text-green-500" /> Precio: <strong>${newAudience.price_min || '0'} - ${newAudience.price_max || 'âˆž'}</strong></div>}
+                  {newAudience.birthday_month_filter && <div className="text-xs bg-white rounded-lg px-3 py-2 border border-gray-200 flex items-center gap-2"><Gift className="w-3 h-3 text-pink-500" /> CumpleaÃ±os: <strong>{newAudience.birthday_month_filter === 'current' ? 'Este Mes' : ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][parseInt(newAudience.birthday_month_filter)]}</strong></div>}
+                  {newAudience.last_purchase_days && <div className="text-xs bg-white rounded-lg px-3 py-2 border border-gray-200 flex items-center gap-2"><Clock className="w-3 h-3 text-orange-500" /> Recencia: <strong>Ãšltimos {newAudience.last_purchase_days} dÃ­as</strong></div>}
                   {!newAudience.status_filter && !newAudience.model_filter && !newAudience.origin_filter && !newAudience.score_min && !newAudience.timeframe_filter && !newAudience.financing_type_filter && !newAudience.requires_financing_filter && !newAudience.test_drive_filter && !newAudience.purchase_type_filter && !newAudience.price_min && !newAudience.price_max && !newAudience.birthday_month_filter && !newAudience.last_purchase_days && (
-                    <div className="text-xs text-gray-400 text-center py-4">Sin filtros — se incluyen todos los contactos del tipo seleccionado</div>
+                    <div className="text-xs text-gray-400 text-center py-4">Sin filtros â€” se incluyen todos los contactos del tipo seleccionado</div>
                   )}
                 </div>
               </div>
@@ -1378,31 +1452,31 @@ export function MarketingAutomation() {
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setShowCampaignModal(false)}>
           <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
             <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-              <h3 className="text-xl font-bold text-gray-800">Nueva Campaña Automatizada</h3>
+              <h3 className="text-xl font-bold text-gray-800">Nueva CampaÃ±a Automatizada</h3>
               <button onClick={() => setShowCampaignModal(false)} className="text-gray-500 hover:text-gray-700">
                 <X className="w-6 h-6" />
               </button>
             </div>
             <div className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Nombre de la Campaña</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Nombre de la CampaÃ±a</label>
                 <input
                   type="text"
                   value={newCampaign.name}
                   onChange={(e) => setNewCampaign({ ...newCampaign, name: e.target.value })}
                   className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                  placeholder="Ej: Campaña de Verano 2025"
+                  placeholder="Ej: CampaÃ±a de Verano 2025"
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Tipo de Campaña</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Tipo de CampaÃ±a</label>
                 <select
                   value={newCampaign.type}
                   onChange={(e) => setNewCampaign({ ...newCampaign, type: e.target.value })}
                   className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
                 >
                   <option value="scheduled">Programada</option>
-                  <option value="triggered">Automática (Triggered)</option>
+                  <option value="triggered">AutomÃ¡tica (Triggered)</option>
                 </select>
               </div>
               {newCampaign.type === 'triggered' && (
@@ -1414,7 +1488,7 @@ export function MarketingAutomation() {
                     className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
                   >
                     <option value="">Seleccionar...</option>
-                    <option value="birthday">Cumpleaños</option>
+                    <option value="birthday">CumpleaÃ±os</option>
                     <option value="inactivity">Inactividad</option>
                     <option value="status_change">Cambio de Estado</option>
                     <option value="custom">Personalizado</option>
@@ -1467,7 +1541,7 @@ export function MarketingAutomation() {
                   onClick={handleCreateCampaign}
                   className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition-all"
                 >
-                  Crear Campaña
+                  Crear CampaÃ±a
                 </button>
                 <button
                   onClick={() => setShowCampaignModal(false)}

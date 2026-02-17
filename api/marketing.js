@@ -17,6 +17,7 @@ const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 const ACCESS_TOKEN = process.env.META_ACCESS_TOKEN;
 const WABA_ID = process.env.WABA_ID;
 const API_VERSION = process.env.API_VERSION || 'v21.0';
+const APP_ID = process.env.META_APP_ID;
 
 if (!PHONE_NUMBER_ID || !ACCESS_TOKEN) {
     console.error('❌ WhatsApp Credentials missing in .env');
@@ -65,6 +66,70 @@ const logToFile = (msg) => {
         fs.appendFileSync('last_error.txt', `[${new Date().toISOString()}] ${msg}\n`);
     } catch (e) { /* ignore */ }
 };
+
+let cachedAppId = APP_ID;
+
+async function getAppId() {
+    if (cachedAppId) return cachedAppId;
+    try {
+        const response = await fetch(`https://graph.facebook.com/${API_VERSION}/app`, {
+            headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` }
+        });
+        const data = await response.json();
+        if (data.id) {
+            cachedAppId = data.id;
+            return data.id;
+        }
+        throw new Error('Failed to get App ID: ' + JSON.stringify(data));
+    } catch (e) {
+        console.error('Error fetching App ID:', e);
+        throw e;
+    }
+}
+
+async function uploadMediaToMeta(base64Image) {
+    if (!base64Image) return null;
+
+    try {
+        // 1. Parse
+        const matches = base64Image.match(/^data:(.+);base64,(.+)$/);
+        if (!matches || matches.length !== 3) throw new Error('Invalid base64 image data');
+        const mimeType = matches[1];
+        const buffer = Buffer.from(matches[2], 'base64');
+        const fileLength = buffer.length;
+
+        const appId = await getAppId();
+
+        // 2. Start Session
+        const startUrl = `https://graph.facebook.com/${API_VERSION}/${appId}/uploads?file_length=${fileLength}&file_type=${mimeType}`;
+        const startRes = await fetch(startUrl, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` }
+        });
+        const startData = await startRes.json();
+        if (!startData.id) throw new Error('Failed to start upload session: ' + JSON.stringify(startData));
+
+        const uploadSessionId = startData.id;
+
+        // 3. Upload Content
+        const uploadUrl = `https://graph.facebook.com/${API_VERSION}/${uploadSessionId}`;
+        const uploadRes = await fetch(uploadUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${ACCESS_TOKEN}`,
+                'file_offset': '0'
+            },
+            body: buffer
+        });
+        const uploadData = await uploadRes.json();
+        if (!uploadData.h) throw new Error('Failed to upload file content: ' + JSON.stringify(uploadData));
+
+        return uploadData.h;
+    } catch (e) {
+        console.error('Error uploading media to Meta:', e);
+        throw e;
+    }
+}
 
 // ==========================================
 // CORE LOGIC HANDLERS
@@ -242,7 +307,7 @@ async function executeCampaignSend(campaignId) {
 }
 
 // --- 2. CREATE TEMPLATE CORE LOGIC ---
-async function executeCreateTemplate({ name, category, message_template, buttons }) {
+async function executeCreateTemplate({ name, category, message_template, buttons, header_type, header_image }) {
     if (!name || !message_template) throw new Error('Missing name or message_template');
     const normalizedName = name.toLowerCase().replace(/[^a-z0-9_]/g, '_');
 
@@ -267,11 +332,28 @@ async function executeCreateTemplate({ name, category, message_template, buttons
     let paramCounter = 1;
     metaBody = metaBody.replace(/{{.*?}}/g, () => `{{${paramCounter++}}}`);
 
-    const components = [{ type: "BODY", text: metaBody }];
+    const components = [];
+
+    // HEADER
+    if (header_type === 'IMAGE' && header_image) {
+        const handle = await uploadMediaToMeta(header_image);
+        if (handle) {
+            components.push({
+                type: "HEADER",
+                format: "IMAGE",
+                example: { "header_handle": [handle] }
+            });
+        }
+    }
+
+    // BODY (Note: Body examples are inside BODY component in API v14+, but for creation payload structure varies slightly. 
+    // Standard payload for creating templates: components array.
+    const bodyComponent = { type: "BODY", text: metaBody };
     if (varCount > 0) {
         const examples = Array(varCount).fill("Ejemplo");
-        components[0].example = { body_text: [examples] };
+        bodyComponent.example = { body_text: [examples] };
     }
+    components.push(bodyComponent);
 
     if (buttons && buttons.length > 0) {
         const metaButtons = buttons.map(btn => {
