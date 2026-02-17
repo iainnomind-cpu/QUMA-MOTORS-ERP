@@ -16,8 +16,11 @@ export interface Branch {
   code: string;
   address: string | null;
   city: string | null;
+  state: string | null;
   phone: string | null;
   manager_name: string | null;
+  latitude: number | null;
+  longitude: number | null;
   active: boolean;
   created_at: string;
   updated_at: string;

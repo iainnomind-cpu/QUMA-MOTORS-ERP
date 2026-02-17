@@ -57,8 +57,9 @@ export function AdminModule() {
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
 
   const [newBranch, setNewBranch] = useState({
-    name: '', code: '', address: '', city: '', phone: '', manager_name: ''
+    name: '', code: '', address: '', city: '', state: '', phone: '', manager_name: ''
   });
+  const [geocodingStatus, setGeocodingStatus] = useState<string>('');
 
   const [userSearch, setUserSearch] = useState('');
   const [catalogSearch, setCatalogSearch] = useState('');
@@ -206,35 +207,66 @@ export function AdminModule() {
 
   const handleCreateBranch = async () => {
     try {
+      // Auto-geocodificar la dirección usando Google Maps API
+      let latitude: number | null = null;
+      let longitude: number | null = null;
+
+      const addressParts = [newBranch.address, newBranch.city, newBranch.state, 'México'].filter(Boolean);
+      const fullAddress = addressParts.join(', ');
+
+      if (fullAddress.length > 10) {
+        setGeocodingStatus('📍 Geocodificando dirección...');
+        try {
+          const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyCnpONcNQf8EaAGx0B2wy3Gziyw38WtdHw';
+          const encoded = encodeURIComponent(fullAddress);
+          const geoResponse = await fetch(
+            `https://maps.googleapis.com/maps/api/geocode/json?address=${encoded}&key=${apiKey}&region=mx&language=es`
+          );
+          const geoData = await geoResponse.json();
+
+          if (geoData.status === 'OK' && geoData.results?.length > 0) {
+            const location = geoData.results[0].geometry.location;
+            latitude = location.lat;
+            longitude = location.lng;
+            setGeocodingStatus(`✅ Ubicación encontrada: ${latitude?.toFixed(4)}, ${longitude?.toFixed(4)}`);
+          } else {
+            setGeocodingStatus('⚠️ No se pudo geocodificar, se guardará sin coordenadas');
+          }
+        } catch (geoError) {
+          console.error('Error en geocodificación:', geoError);
+          setGeocodingStatus('⚠️ Error de geocodificación, se guardará sin coordenadas');
+        }
+      }
+
+      const branchPayload = {
+        name: newBranch.name,
+        code: newBranch.code.toUpperCase(),
+        address: newBranch.address || null,
+        city: newBranch.city || null,
+        state: newBranch.state || null,
+        phone: newBranch.phone || null,
+        manager_name: newBranch.manager_name || null,
+        latitude,
+        longitude,
+        updated_at: new Date().toISOString()
+      };
+
       if (editingBranch) {
-        await supabase.from('branches').update({
-          name: newBranch.name,
-          code: newBranch.code.toUpperCase(),
-          address: newBranch.address || null,
-          city: newBranch.city || null,
-          phone: newBranch.phone || null,
-          manager_name: newBranch.manager_name || null,
-          updated_at: new Date().toISOString()
-        }).eq('id', editingBranch.id);
-        log('update', 'branch', { name: newBranch.name, code: newBranch.code, action: 'Sucursal actualizada' }, editingBranch.id);
+        await supabase.from('branches').update(branchPayload).eq('id', editingBranch.id);
+        log('update', 'branch', { name: newBranch.name, code: newBranch.code, latitude, longitude, action: 'Sucursal actualizada con geocodificación' }, editingBranch.id);
       } else {
-        await supabase.from('branches').insert([{
-          name: newBranch.name,
-          code: newBranch.code.toUpperCase(),
-          address: newBranch.address || null,
-          city: newBranch.city || null,
-          phone: newBranch.phone || null,
-          manager_name: newBranch.manager_name || null
-        }]);
-        log('create', 'branch', { name: newBranch.name, code: newBranch.code, action: 'Nueva sucursal creada' });
+        await supabase.from('branches').insert([branchPayload]);
+        log('create', 'branch', { name: newBranch.name, code: newBranch.code, latitude, longitude, action: 'Nueva sucursal creada con geocodificación' });
       }
       setShowBranchModal(false);
       setEditingBranch(null);
-      setNewBranch({ name: '', code: '', address: '', city: '', phone: '', manager_name: '' });
+      setNewBranch({ name: '', code: '', address: '', city: '', state: '', phone: '', manager_name: '' });
+      setGeocodingStatus('');
       await loadBranches();
       await refreshGlobalBranches();
     } catch (error) {
       console.error('Error saving branch:', error);
+      setGeocodingStatus('');
     }
   };
 
@@ -253,9 +285,15 @@ export function AdminModule() {
       code: branch.code,
       address: branch.address || '',
       city: branch.city || '',
+      state: branch.state || '',
       phone: branch.phone || '',
       manager_name: branch.manager_name || ''
     });
+    setGeocodingStatus(
+      branch.latitude && branch.longitude
+        ? `📍 Coordenadas actuales: ${branch.latitude.toFixed(4)}, ${branch.longitude.toFixed(4)}`
+        : ''
+    );
     setShowBranchModal(true);
   };
 
@@ -1934,7 +1972,7 @@ export function AdminModule() {
               <Building2 className="w-6 h-6" /> Gestión de Sucursales
             </h3>
             <button
-              onClick={() => { setEditingBranch(null); setNewBranch({ name: '', code: '', address: '', city: '', phone: '', manager_name: '' }); setShowBranchModal(true); }}
+              onClick={() => { setEditingBranch(null); setNewBranch({ name: '', code: '', address: '', city: '', state: '', phone: '', manager_name: '' }); setGeocodingStatus(''); setShowBranchModal(true); }}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-semibold transition-all shadow-md"
             >
               <Plus className="w-5 h-5" /> Nueva Sucursal
@@ -1963,7 +2001,19 @@ export function AdminModule() {
                   </div>
                 )}
                 {branch.city && (
-                  <div className="text-sm text-gray-500 ml-6 mb-1">{branch.city}</div>
+                  <div className="text-sm text-gray-500 ml-6 mb-1">
+                    {branch.city}{branch.state ? `, ${branch.state}` : ''}
+                  </div>
+                )}
+                {(branch.latitude && branch.longitude) && (
+                  <div className="flex items-center gap-2 text-xs text-green-600 ml-6 mb-1">
+                    📍 {branch.latitude.toFixed(4)}, {branch.longitude.toFixed(4)}
+                  </div>
+                )}
+                {(!branch.latitude || !branch.longitude) && (
+                  <div className="flex items-center gap-2 text-xs text-amber-600 ml-6 mb-1">
+                    ⚠️ Sin coordenadas — edite para geocodificar
+                  </div>
                 )}
                 {branch.phone && (
                   <div className="flex items-center gap-2 text-sm text-gray-600 mb-1">
@@ -2017,11 +2067,22 @@ export function AdminModule() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-semibold text-gray-700 mb-1 block">Ciudad</label>
-                  <input value={newBranch.city} onChange={e => setNewBranch({ ...newBranch, city: e.target.value })} className="w-full border-2 border-gray-200 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500" />
+                  <input value={newBranch.city} onChange={e => setNewBranch({ ...newBranch, city: e.target.value })} className="w-full border-2 border-gray-200 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500" placeholder="Colima" />
                 </div>
+                <div>
+                  <label className="text-sm font-semibold text-gray-700 mb-1 block">Estado</label>
+                  <input value={newBranch.state} onChange={e => setNewBranch({ ...newBranch, state: e.target.value })} className="w-full border-2 border-gray-200 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500" placeholder="Colima" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-semibold text-gray-700 mb-1 block">Teléfono</label>
                   <input value={newBranch.phone} onChange={e => setNewBranch({ ...newBranch, phone: e.target.value })} className="w-full border-2 border-gray-200 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex items-end">
+                  {geocodingStatus && (
+                    <div className="text-xs text-gray-600 py-2.5">{geocodingStatus}</div>
+                  )}
                 </div>
               </div>
               <div>

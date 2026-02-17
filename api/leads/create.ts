@@ -28,6 +28,8 @@ interface CreateLeadRequest {
   monthly_payment_amount?: number;
   manychat_user_id?: string;
   manychat_conversation_id?: string;
+  city?: string;       // Localidad del lead (desde chatbot)
+  state?: string;      // Estado del lead (desde chatbot)
   metadata?: Record<string, any>;
 }
 
@@ -40,6 +42,8 @@ interface CreateLeadResponse {
     status: string;
     assigned_agent_id?: string | null;
     assigned_agent_name?: string | null;
+    branch_id?: string | null;
+    branch_name?: string | null;
   };
   error?: string;
   message?: string;
@@ -126,6 +130,131 @@ function calculateInitialStatus(score: number): string {
   return 'Rojo';
 }
 
+// ===== GEOCODIFICACIÓN Y SUCURSAL MÁS CERCANA =====
+
+interface GeoCoords {
+  lat: number;
+  lng: number;
+}
+
+interface BranchWithCoords {
+  id: string;
+  name: string;
+  latitude: number | null;
+  longitude: number | null;
+  state: string | null;
+  city: string | null;
+}
+
+// Geocodificar localidad + estado usando Google Geocoding API
+async function geocodeLocation(city: string, state: string): Promise<GeoCoords | null> {
+  try {
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      console.error('GOOGLE_MAPS_API_KEY no configurada');
+      return null;
+    }
+
+    const address = encodeURIComponent(`${city}, ${state}, México`);
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${address}&key=${apiKey}&region=mx&language=es`;
+
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.status === 'OK' && data.results && data.results.length > 0) {
+      const location = data.results[0].geometry.location;
+      console.log(`📍 Geocodificado "${city}, ${state}" → lat: ${location.lat}, lng: ${location.lng}`);
+      return { lat: location.lat, lng: location.lng };
+    } else {
+      console.warn(`⚠️ No se pudo geocodificar "${city}, ${state}" - Status: ${data.status}`);
+      return null;
+    }
+  } catch (error) {
+    console.error('Error en geocodificación:', error);
+    return null;
+  }
+}
+
+// Calcular distancia entre dos puntos usando fórmula Haversine (en km)
+function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371; // Radio de la Tierra en km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// Encontrar la sucursal más cercana
+async function findNearestBranch(coords: GeoCoords): Promise<{ id: string; name: string } | null> {
+  try {
+    const { data: branches, error } = await supabase
+      .from('branches')
+      .select('id, name, latitude, longitude, state, city')
+      .eq('active', true);
+
+    if (error || !branches || branches.length === 0) {
+      console.error('Error obteniendo sucursales:', error);
+      return null;
+    }
+
+    // Filtrar sucursales que tengan coordenadas
+    const branchesWithCoords = branches.filter(
+      (b: BranchWithCoords) => b.latitude !== null && b.longitude !== null
+    );
+
+    if (branchesWithCoords.length === 0) {
+      console.warn('Ninguna sucursal tiene coordenadas configuradas');
+      // Fallback: retornar la primera sucursal activa
+      return { id: branches[0].id, name: branches[0].name };
+    }
+
+    // Calcular distancia a cada sucursal
+    let nearest = branchesWithCoords[0];
+    let minDistance = haversineDistance(coords.lat, coords.lng, nearest.latitude!, nearest.longitude!);
+
+    for (let i = 1; i < branchesWithCoords.length; i++) {
+      const branch = branchesWithCoords[i];
+      const distance = haversineDistance(coords.lat, coords.lng, branch.latitude!, branch.longitude!);
+      console.log(`  📏 Distancia a ${branch.name}: ${distance.toFixed(1)} km`);
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearest = branch;
+      }
+    }
+
+    console.log(`✅ Sucursal más cercana: ${nearest.name} (${minDistance.toFixed(1)} km)`);
+    return { id: nearest.id, name: nearest.name };
+  } catch (error) {
+    console.error('Error buscando sucursal más cercana:', error);
+    return null;
+  }
+}
+
+// Fallback: buscar sucursal por estado (si la geocodificación falla)
+async function findBranchByState(state: string): Promise<{ id: string; name: string } | null> {
+  try {
+    const { data: branches, error } = await supabase
+      .from('branches')
+      .select('id, name, state')
+      .eq('active', true)
+      .ilike('state', `%${state}%`)
+      .limit(1);
+
+    if (!error && branches && branches.length > 0) {
+      console.log(`🔍 Sucursal encontrada por estado "${state}": ${branches[0].name}`);
+      return { id: branches[0].id, name: branches[0].name };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// ===== FIN GEOCODIFICACIÓN =====
+
 // Crear lead
 async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> {
   try {
@@ -163,6 +292,38 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
       testDriveDateFormatted = localDate.toISOString();
     }
 
+    // ===== DETERMINAR SUCURSAL MÁS CERCANA =====
+    let assignedBranch: { id: string; name: string } | null = null;
+
+    if (data.city && data.state) {
+      // Intentar geocodificación
+      const coords = await geocodeLocation(data.city, data.state);
+      if (coords) {
+        assignedBranch = await findNearestBranch(coords);
+      }
+
+      // Fallback: buscar por estado si no se encontró por coordenadas
+      if (!assignedBranch && data.state) {
+        assignedBranch = await findBranchByState(data.state);
+      }
+    }
+
+    // Fallback final: primera sucursal activa
+    if (!assignedBranch) {
+      const { data: defaultBranch } = await supabase
+        .from('branches')
+        .select('id, name')
+        .eq('active', true)
+        .limit(1)
+        .single();
+
+      if (defaultBranch) {
+        assignedBranch = { id: defaultBranch.id, name: defaultBranch.name };
+        console.log(`⚠️ Sin ubicación del lead, asignando sucursal por defecto: ${defaultBranch.name}`);
+      }
+    }
+    // ===== FIN DETERMINACIÓN DE SUCURSAL =====
+
     const leadData = {
       name: data.name.trim(),
       phone: data.phone?.trim() || null,
@@ -184,7 +345,10 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
       has_address_proof: false,
       score: initialScore,
       status: initialStatus,
-      assigned_agent_id: null
+      assigned_agent_id: null,
+      branch_id: assignedBranch?.id || null,
+      lead_city: data.city?.trim() || null,
+      lead_state: data.state?.trim() || null
     };
 
     const { data: insertedLead, error: insertError } = await supabase
@@ -202,20 +366,45 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
       };
     }
 
-    // ===== ASIGNACIÓN AUTOMÁTICA ROUND ROBIN =====
+    // ===== ASIGNACIÓN AUTOMÁTICA ROUND ROBIN (FILTRADO POR SUCURSAL) =====
     let assignedAgent = null;
     let metaResponse = null;
     let metaHttpCode = 0;
     let metaError = null;
 
     try {
-      // Obtener agentes activos ordenados por total_leads_assigned (ascendente)
-      const { data: activeAgents, error: agentsError } = await supabase
+      // Paso 1: Buscar agentes activos de la sucursal asignada
+      let agentQuery = supabase
         .from('sales_agents')
         .select('id, name, email, phone, total_leads_assigned')
         .eq('status', 'active')
-        .order('total_leads_assigned', { ascending: true })
-        .limit(1);
+        .order('total_leads_assigned', { ascending: true });
+
+      // Filtrar por sucursal si se determinó una
+      if (assignedBranch) {
+        agentQuery = agentQuery.eq('branch_id', assignedBranch.id);
+      }
+
+      const { data: branchAgents, error: agentsError } = await agentQuery.limit(1);
+
+      // Paso 2: Si no hay agentes en la sucursal, fallback a round-robin global
+      let activeAgents = branchAgents;
+      let usedFallback = false;
+
+      if ((!branchAgents || branchAgents.length === 0) && assignedBranch) {
+        console.log(`⚠️ No hay agentes activos en sucursal ${assignedBranch.name}, usando round-robin global`);
+        const { data: globalAgents, error: globalError } = await supabase
+          .from('sales_agents')
+          .select('id, name, email, phone, total_leads_assigned')
+          .eq('status', 'active')
+          .order('total_leads_assigned', { ascending: true })
+          .limit(1);
+
+        if (!globalError && globalAgents) {
+          activeAgents = globalAgents;
+          usedFallback = true;
+        }
+      }
 
       if (!agentsError && activeAgents && activeAgents.length > 0) {
         assignedAgent = activeAgents[0];
@@ -239,6 +428,9 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
             .eq('id', assignedAgent.id);
 
           // Create assignment record
+          const branchNote = assignedBranch
+            ? ` - Sucursal: ${assignedBranch.name}${usedFallback ? ' (fallback global)' : ''}`
+            : '';
           await supabase
             .from('lead_assignments')
             .insert([{
@@ -246,10 +438,10 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
               agent_id: assignedAgent.id,
               assigned_at: new Date().toISOString(),
               status: 'active',
-              notes: `Asignación automática vía Round Robin - Score inicial: ${initialScore} (${initialStatus})`
+              notes: `Asignación automática vía Round Robin - Score inicial: ${initialScore} (${initialStatus})${branchNote}`
             }]);
 
-          console.log(`Lead ${insertedLead.id} asignado a agente ${assignedAgent.name} (${assignedAgent.id})`);
+          console.log(`Lead ${insertedLead.id} asignado a agente ${assignedAgent.name} (${assignedAgent.id}) en sucursal ${assignedBranch?.name || 'N/A'}`);
 
           // --- SEND WHATSAPP NOTIFICATION TO AGENT ---
 
@@ -404,10 +596,12 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
         score: insertedLead.score,
         status: insertedLead.status,
         assigned_agent_id: assignedAgent?.id || null,
-        assigned_agent_name: assignedAgent?.name || null
+        assigned_agent_name: assignedAgent?.name || null,
+        branch_id: assignedBranch?.id || null,
+        branch_name: assignedBranch?.name || null
       },
       message: assignedAgent
-        ? `Lead "${insertedLead.name}" creado exitosamente con score ${insertedLead.score} (${initialStatus}) y asignado a ${assignedAgent.name}`
+        ? `Lead "${insertedLead.name}" creado exitosamente con score ${insertedLead.score} (${initialStatus}), asignado a ${assignedAgent.name} en sucursal ${assignedBranch?.name || 'N/A'}`
         : `Lead "${insertedLead.name}" creado exitosamente con score ${insertedLead.score} (${initialStatus}) - Sin agentes disponibles para asignar`,
       whatsapp_debug: {
         attempted: !!assignedAgent,
