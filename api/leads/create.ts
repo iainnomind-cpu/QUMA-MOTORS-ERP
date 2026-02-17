@@ -466,9 +466,9 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
                     {
                       type: 'body',
                       parameters: [
-                        { type: 'text', text: assignedAgent.name || 'Agente' },     // {{1}}
-                        { type: 'text', text: insertedLead.name || 'Cliente' },     // {{2}}
-                        { type: 'text', text: `${insertedLead.model_interested || 'Interés General'} - ${insertedLead.phone || 'N/A'}` } // {{3}}
+                        { type: 'text', text: insertedLead.name || 'Cliente' },                    // {{1}} nombre del lead
+                        { type: 'text', text: insertedLead.phone || 'N/A' },                       // {{2}} teléfono del lead
+                        { type: 'text', text: insertedLead.model_interested || 'Interés General' } // {{3}} modelo de interés
                       ]
                     }
                   ]
