@@ -878,7 +878,7 @@ export function MarketingAutomation() {
                       <div>
                         <h4 className="font-bold text-gray-800 mb-2">{audience.name}</h4>
                         <span className={`inline-block px-2.5 py-1 text-xs font-bold rounded-full ${audience.target_type === 'leads' ? 'bg-blue-100 text-blue-700' : audience.target_type === 'clients' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}>
-                          {audience.target_type === 'leads' ? 'ðŸŽ¯ Leads' : audience.target_type === 'clients' ? 'ðŸ‘¥ Clientes' : 'ðŸ”„ Mixto'}
+                          {audience.target_type === 'leads' ? '🎯 Leads' : audience.target_type === 'clients' ? '👥 Clientes' : '🔄 Mixto'}
                         </span>
                       </div>
                       <div className="text-right">
@@ -1236,9 +1236,9 @@ export function MarketingAutomation() {
                   <div>
                     <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase tracking-wider">Tipo de Audiencia</label>
                     <select value={newAudience.target_type} onChange={(e) => setNewAudience({ ...newAudience, target_type: e.target.value })} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white">
-                      <option value="leads">ðŸŽ¯ Solo Leads</option>
-                      <option value="clients">ðŸ‘¥ Solo Clientes</option>
-                      <option value="mixed">ðŸ”„ Leads y Clientes</option>
+                      <option value="leads">🎯 Solo Leads</option>
+                      <option value="clients">👥 Solo Clientes</option>
+                      <option value="mixed">🔄 Leads y Clientes</option>
                     </select>
                   </div>
                 </div>
@@ -1252,9 +1252,9 @@ export function MarketingAutomation() {
                         <label className="block text-xs font-semibold text-gray-600 mb-1">Temperatura</label>
                         <select value={newAudience.status_filter} onChange={(e) => setNewAudience({ ...newAudience, status_filter: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none">
                           <option value="">Todos</option>
-                          <option value="Verde">ðŸŸ¢ Verde (Caliente)</option>
-                          <option value="Amarillo">ðŸŸ¡ Amarillo (Tibio)</option>
-                          <option value="Rojo">ðŸ”´ Rojo (Frío)</option>
+                          <option value="Verde">🟢 Verde (Caliente)</option>
+                          <option value="Amarillo">🟡 Amarillo (Tibio)</option>
+                          <option value="Rojo">🔴 Rojo (Frío)</option>
                         </select>
                       </div>
                       <div>
@@ -1278,9 +1278,9 @@ export function MarketingAutomation() {
                         <label className="block text-xs font-semibold text-gray-600 mb-1">Timeframe</label>
                         <select value={newAudience.timeframe_filter} onChange={(e) => setNewAudience({ ...newAudience, timeframe_filter: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none">
                           <option value="">Todos</option>
-                          <option value="Inmediato">âš¡ Inmediato</option>
-                          <option value="Pronto">ðŸ”œ Pronto</option>
-                          <option value="Futuro">ðŸ“… Futuro</option>
+                          <option value="Inmediato">⚡ Inmediato</option>
+                          <option value="Pronto">🔜 Pronto</option>
+                          <option value="Futuro">🗓 Futuro</option>
                         </select>
                       </div>
                       <div>
@@ -1367,11 +1367,11 @@ export function MarketingAutomation() {
                         <label className="block text-xs font-semibold text-gray-600 mb-1">Compró en los últimos...</label>
                         <select value={newAudience.last_purchase_days} onChange={(e) => setNewAudience({ ...newAudience, last_purchase_days: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 outline-none">
                           <option value="">Sin filtro de recencia</option>
-                          <option value="30">Ãšltimos 30 días</option>
-                          <option value="60">Ãšltimos 60 días</option>
-                          <option value="90">Ãšltimos 90 días</option>
-                          <option value="180">Ãšltimos 6 meses</option>
-                          <option value="365">Ãšltimo año</option>
+                          <option value="30">Últimos 30 días</option>
+                          <option value="60">Últimos 60 días</option>
+                          <option value="90">Últimos 90 días</option>
+                          <option value="180">Últimos 6 meses</option>
+                          <option value="365">Último año</option>
                         </select>
                       </div>
                     </div>
@@ -1383,7 +1383,7 @@ export function MarketingAutomation() {
                   <h4 className="text-sm font-bold text-pink-800 mb-3 flex items-center gap-2"><Gift className="w-4 h-4" /> Cumpleaños</h4>
                   <select value={newAudience.birthday_month_filter} onChange={(e) => setNewAudience({ ...newAudience, birthday_month_filter: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-pink-500 outline-none">
                     <option value="">Sin filtro de cumpleaños</option>
-                    <option value="current">ðŸŽ‚ Este mes</option>
+                    <option value="current">🎂 Este mes</option>
                     <option value="0">Enero</option>
                     <option value="1">Febrero</option>
                     <option value="2">Marzo</option>
@@ -1437,7 +1437,7 @@ export function MarketingAutomation() {
                   {newAudience.purchase_type_filter && <div className="text-xs bg-white rounded-lg px-3 py-2 border border-gray-200 flex items-center gap-2"><Tag className="w-3 h-3 text-orange-500" /> Tipo Compra: <strong>{newAudience.purchase_type_filter}</strong></div>}
                   {(newAudience.price_min || newAudience.price_max) && <div className="text-xs bg-white rounded-lg px-3 py-2 border border-gray-200 flex items-center gap-2"><DollarSign className="w-3 h-3 text-green-500" /> Precio: <strong>${newAudience.price_min || '0'} - ${newAudience.price_max || 'âˆž'}</strong></div>}
                   {newAudience.birthday_month_filter && <div className="text-xs bg-white rounded-lg px-3 py-2 border border-gray-200 flex items-center gap-2"><Gift className="w-3 h-3 text-pink-500" /> Cumpleaños: <strong>{newAudience.birthday_month_filter === 'current' ? 'Este Mes' : ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][parseInt(newAudience.birthday_month_filter)]}</strong></div>}
-                  {newAudience.last_purchase_days && <div className="text-xs bg-white rounded-lg px-3 py-2 border border-gray-200 flex items-center gap-2"><Clock className="w-3 h-3 text-orange-500" /> Recencia: <strong>Ãšltimos {newAudience.last_purchase_days} días</strong></div>}
+                  {newAudience.last_purchase_days && <div className="text-xs bg-white rounded-lg px-3 py-2 border border-gray-200 flex items-center gap-2"><Clock className="w-3 h-3 text-orange-500" /> Recencia: <strong>Últimos {newAudience.last_purchase_days} días</strong></div>}
                   {!newAudience.status_filter && !newAudience.model_filter && !newAudience.origin_filter && !newAudience.score_min && !newAudience.timeframe_filter && !newAudience.financing_type_filter && !newAudience.requires_financing_filter && !newAudience.test_drive_filter && !newAudience.purchase_type_filter && !newAudience.price_min && !newAudience.price_max && !newAudience.birthday_month_filter && !newAudience.last_purchase_days && (
                     <div className="text-xs text-gray-400 text-center py-4">Sin filtros — se incluyen todos los contactos del tipo seleccionado</div>
                   )}
