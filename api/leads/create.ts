@@ -5,9 +5,9 @@ import dotenv from 'dotenv';
 // Load .env
 dotenv.config();
 
-// Crear cliente de Supabase
+// Crear cliente de Supabase (usar service role key para evitar RLS)
 const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || '';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 
