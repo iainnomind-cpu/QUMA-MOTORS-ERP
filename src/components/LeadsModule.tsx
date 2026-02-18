@@ -2734,6 +2734,7 @@ export function LeadsModule() {
                   >
                     <option value="all">Todos los Orígenes</option>
                     <option value="WhatsApp">WhatsApp</option>
+                    <option value="Chatbot WA">Chatbot WA</option>
                     <option value="Planta">Planta</option>
                     <option value="Piso Venta">Piso de Venta</option>
                     <option value="Telefónico">Telefónico</option>

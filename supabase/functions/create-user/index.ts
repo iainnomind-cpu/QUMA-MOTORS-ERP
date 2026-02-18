@@ -90,6 +90,31 @@ serve(async (req) => {
             throw profileError
         }
 
+        // 3. Si el rol es vendedor, crear/actualizar registro en sales_agents para el round robin
+        if (role === 'vendedor') {
+            console.log(`Creando/actualizando sales_agent para vendedor ${full_name}...`)
+            const { error: agentError } = await supabaseAdmin
+                .from('sales_agents')
+                .upsert({
+                    id: userId,
+                    name: full_name,
+                    email,
+                    phone: phone || null,
+                    branch_id: branch_id || null,
+                    status: 'active',
+                    total_leads_assigned: 0,
+                    total_leads_converted: 0,
+                    conversion_rate: 0
+                }, { onConflict: 'id' })
+
+            if (agentError) {
+                console.error('Error al crear sales_agent:', agentError)
+                // No hacemos throw, el usuario ya se creó correctamente
+            } else {
+                console.log(`✅ Sales agent creado/actualizado para ${full_name}`)
+            }
+        }
+
         return new Response(
             JSON.stringify({ success: true, user_id: userId }),
             {

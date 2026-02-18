@@ -388,13 +388,14 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
       }
 
       const { data: branchAgents, error: agentsError } = await agentQuery.limit(1);
+      console.log(`🔍 Round Robin - Agentes activos en sucursal ${assignedBranch?.name || 'N/A'}: ${branchAgents?.length || 0}${agentsError ? ' ERROR: ' + agentsError.message : ''}`);
 
       // Paso 2: Si no hay agentes en la sucursal, fallback a round-robin global
       let activeAgents = branchAgents;
       let usedFallback = false;
 
       if ((!branchAgents || branchAgents.length === 0) && assignedBranch) {
-        console.log(`⚠️ No hay agentes activos en sucursal ${assignedBranch.name}, usando round-robin global`);
+        console.log(`⚠️ No hay agentes activos en sucursal ${assignedBranch.name} (branch_id: ${assignedBranch.id}), usando round-robin global`);
         const { data: globalAgents, error: globalError } = await supabase
           .from('sales_agents')
           .select('id, name, email, phone, total_leads_assigned')
