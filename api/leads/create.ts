@@ -375,6 +375,24 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
     let metaError = null;
 
     try {
+      // === DEBUG: Diagnóstico completo de sales_agents ===
+      const { data: allAgentsDebug, error: debugError } = await supabase
+        .from('sales_agents')
+        .select('id, name, status, branch_id');
+
+      console.log(`🔬 DEBUG sales_agents - Total rows: ${allAgentsDebug?.length || 0}, Error: ${debugError?.message || 'none'}`);
+      if (allAgentsDebug && allAgentsDebug.length > 0) {
+        allAgentsDebug.forEach(a => {
+          console.log(`   👤 ${a.name} | status: "${a.status}" | branch_id: ${a.branch_id}`);
+        });
+      } else {
+        console.log('   ❌ La tabla sales_agents está VACÍA o no se pudo leer (RLS?)');
+      }
+
+      console.log(`🔑 Supabase key type: ${supabaseServiceKey.includes('service_role') ? 'SERVICE_ROLE' : supabaseServiceKey.includes('anon') ? 'ANON' : 'UNKNOWN'}`);
+      console.log(`🏢 Buscando agentes para branch_id: ${assignedBranch?.id || 'SIN SUCURSAL'}`);
+      // === FIN DEBUG ===
+
       // Paso 1: Buscar agentes activos de la sucursal asignada
       let agentQuery = supabase
         .from('sales_agents')
@@ -388,7 +406,7 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
       }
 
       const { data: branchAgents, error: agentsError } = await agentQuery.limit(1);
-      console.log(`🔍 Round Robin - Agentes activos en sucursal ${assignedBranch?.name || 'N/A'}: ${branchAgents?.length || 0}${agentsError ? ' ERROR: ' + agentsError.message : ''}`);
+      console.log(`🔍 Round Robin - Resultado query: ${JSON.stringify(branchAgents)} | Error: ${agentsError?.message || 'none'}`);
 
       // Paso 2: Si no hay agentes en la sucursal, fallback a round-robin global
       let activeAgents = branchAgents;
@@ -402,6 +420,8 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
           .eq('status', 'active')
           .order('total_leads_assigned', { ascending: true })
           .limit(1);
+
+        console.log(`🌐 Fallback global - Resultado: ${JSON.stringify(globalAgents)} | Error: ${globalError?.message || 'none'}`);
 
         if (!globalError && globalAgents) {
           activeAgents = globalAgents;
