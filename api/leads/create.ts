@@ -368,69 +368,78 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
       };
     }
 
-    // ===== ASIGNACIÓN AUTOMÁTICA ROUND ROBIN (FILTRADO POR SUCURSAL) =====
+    // ===== ASIGNACIÓN AUTOMÁTICA ROUND ROBIN (USANDO user_profiles) =====
     let assignedAgent = null;
     let metaResponse = null;
     let metaHttpCode = 0;
     let metaError = null;
 
     try {
-      // === DEBUG: Diagnóstico completo de sales_agents ===
-      const { data: allAgentsDebug, error: debugError } = await supabase
-        .from('sales_agents')
-        .select('id, name, status, branch_id');
-
-      console.log(`🔬 DEBUG sales_agents - Total rows: ${allAgentsDebug?.length || 0}, Error: ${debugError?.message || 'none'}`);
-      if (allAgentsDebug && allAgentsDebug.length > 0) {
-        allAgentsDebug.forEach(a => {
-          console.log(`   👤 ${a.name} | status: "${a.status}" | branch_id: ${a.branch_id}`);
-        });
-      } else {
-        console.log('   ❌ La tabla sales_agents está VACÍA o no se pudo leer (RLS?)');
-      }
-
-      console.log(`🔑 Supabase key type: ${supabaseServiceKey.includes('service_role') ? 'SERVICE_ROLE' : supabaseServiceKey.includes('anon') ? 'ANON' : 'UNKNOWN'}`);
-      console.log(`🏢 Buscando agentes para branch_id: ${assignedBranch?.id || 'SIN SUCURSAL'}`);
-      // === FIN DEBUG ===
-
-      // Paso 1: Buscar agentes activos de la sucursal asignada
+      // Paso 1: Buscar vendedores activos de la sucursal asignada en user_profiles
       let agentQuery = supabase
-        .from('sales_agents')
-        .select('id, name, email, phone, total_leads_assigned')
-        .eq('status', 'active')
-        .order('total_leads_assigned', { ascending: true });
+        .from('user_profiles')
+        .select('id, full_name, email, phone')
+        .eq('role', 'vendedor')
+        .eq('active', true);
 
       // Filtrar por sucursal si se determinó una
       if (assignedBranch) {
         agentQuery = agentQuery.eq('branch_id', assignedBranch.id);
       }
 
-      const { data: branchAgents, error: agentsError } = await agentQuery.limit(1);
-      console.log(`🔍 Round Robin - Resultado query: ${JSON.stringify(branchAgents)} | Error: ${agentsError?.message || 'none'}`);
+      const { data: branchAgents, error: agentsError } = await agentQuery;
+      console.log(`🔍 Round Robin (user_profiles) - Vendedores en sucursal ${assignedBranch?.name || 'N/A'}: ${branchAgents?.length || 0}${agentsError ? ' ERROR: ' + agentsError.message : ''}`);
 
       // Paso 2: Si no hay agentes en la sucursal, fallback a round-robin global
-      let activeAgents = branchAgents;
+      let candidateAgents = branchAgents;
       let usedFallback = false;
 
       if ((!branchAgents || branchAgents.length === 0) && assignedBranch) {
-        console.log(`⚠️ No hay agentes activos en sucursal ${assignedBranch.name} (branch_id: ${assignedBranch.id}), usando round-robin global`);
+        console.log(`⚠️ No hay vendedores activos en sucursal ${assignedBranch.name}, usando round-robin global`);
         const { data: globalAgents, error: globalError } = await supabase
-          .from('sales_agents')
-          .select('id, name, email, phone, total_leads_assigned')
-          .eq('status', 'active')
-          .order('total_leads_assigned', { ascending: true })
-          .limit(1);
+          .from('user_profiles')
+          .select('id, full_name, email, phone')
+          .eq('role', 'vendedor')
+          .eq('active', true);
 
-        console.log(`🌐 Fallback global - Resultado: ${JSON.stringify(globalAgents)} | Error: ${globalError?.message || 'none'}`);
+        console.log(`🌐 Fallback global - Vendedores: ${globalAgents?.length || 0}${globalError ? ' ERROR: ' + globalError.message : ''}`);
 
         if (!globalError && globalAgents) {
-          activeAgents = globalAgents;
+          candidateAgents = globalAgents;
           usedFallback = true;
         }
       }
 
-      if (!agentsError && activeAgents && activeAgents.length > 0) {
-        assignedAgent = activeAgents[0];
+      // Paso 3: Round Robin — elegir el que tenga menos leads asignados
+      if (!agentsError && candidateAgents && candidateAgents.length > 0) {
+        // Contar leads asignados a cada candidato
+        let minLeads = Infinity;
+        let selectedAgent = candidateAgents[0];
+
+        for (const agent of candidateAgents) {
+          const { count } = await supabase
+            .from('leads')
+            .select('id', { count: 'exact', head: true })
+            .eq('assigned_agent_id', agent.id);
+
+          const leadCount = count || 0;
+          console.log(`   📊 ${agent.full_name}: ${leadCount} leads asignados`);
+
+          if (leadCount < minLeads) {
+            minLeads = leadCount;
+            selectedAgent = agent;
+          }
+        }
+
+        // Mapear campos de user_profiles al formato esperado
+        assignedAgent = {
+          id: selectedAgent.id,
+          name: selectedAgent.full_name,
+          email: selectedAgent.email,
+          phone: selectedAgent.phone
+        };
+
+        console.log(`✅ Agente seleccionado: ${assignedAgent.name} (${minLeads} leads)`);
 
         // Asignar el lead al agente
         const { error: updateError } = await supabase
@@ -441,14 +450,6 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
         if (updateError) {
           console.error('Error al asignar lead al agente:', updateError);
         } else {
-
-          // Increment agent count
-          await supabase
-            .from('sales_agents')
-            .update({
-              total_leads_assigned: (assignedAgent.total_leads_assigned || 0) + 1
-            })
-            .eq('id', assignedAgent.id);
 
           // Create assignment record
           const branchNote = assignedBranch
