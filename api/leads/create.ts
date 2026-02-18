@@ -324,6 +324,7 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
       }
     }
     // ===== FIN DETERMINACIÓN DE SUCURSAL =====
+    console.log(`🏢 Sucursal determinada para lead: ${assignedBranch ? `${assignedBranch.name} (${assignedBranch.id})` : 'NINGUNA'}`);
 
     const leadData = {
       name: data.name.trim(),
@@ -589,6 +590,24 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
       // --- END TEST DRIVE NOTIFICATION ---
     }
 
+    // Resolve branch info for response (fallback: read from inserted lead record)
+    let responseBranchId = assignedBranch?.id || insertedLead.branch_id || null;
+    let responseBranchName = assignedBranch?.name || null;
+
+    // If we have a branch_id but no name (e.g. assignedBranch was lost), look it up
+    if (responseBranchId && !responseBranchName) {
+      const { data: branchRow } = await supabase
+        .from('branches')
+        .select('name')
+        .eq('id', responseBranchId)
+        .single();
+      if (branchRow) {
+        responseBranchName = branchRow.name;
+      }
+    }
+
+    console.log(`📦 Respuesta API - branch_id: ${responseBranchId}, branch_name: ${responseBranchName}`);
+
     return {
       success: true,
       data: {
@@ -598,11 +617,11 @@ async function createLead(data: CreateLeadRequest): Promise<CreateLeadResponse> 
         status: insertedLead.status,
         assigned_agent_id: assignedAgent?.id || null,
         assigned_agent_name: assignedAgent?.name || null,
-        branch_id: assignedBranch?.id || null,
-        branch_name: assignedBranch?.name || null
+        branch_id: responseBranchId,
+        branch_name: responseBranchName
       },
       message: assignedAgent
-        ? `Lead "${insertedLead.name}" creado exitosamente con score ${insertedLead.score} (${initialStatus}), asignado a ${assignedAgent.name} en sucursal ${assignedBranch?.name || 'N/A'}`
+        ? `Lead "${insertedLead.name}" creado exitosamente con score ${insertedLead.score} (${initialStatus}), asignado a ${assignedAgent.name} en sucursal ${responseBranchName || 'N/A'}`
         : `Lead "${insertedLead.name}" creado exitosamente con score ${insertedLead.score} (${initialStatus}) - Sin agentes disponibles para asignar`,
       whatsapp_debug: {
         attempted: !!assignedAgent,

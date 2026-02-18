@@ -17,7 +17,7 @@ type ViewMode = 'leads' | 'clients' | 'detail' | 'create' | 'edit' | 'client-det
 
 export function LeadsModule() {
   const { user } = useAuth();
-  const { selectedBranchId } = useBranch();
+  const { selectedBranchId, allBranches } = useBranch();
   const [viewMode, setViewMode] = useState<ViewMode>('leads');
   const [leads, setLeads] = useState<Lead[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -36,6 +36,7 @@ export function LeadsModule() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [originFilter, setOriginFilter] = useState('all');
+  const [branchFilter, setBranchFilter] = useState('all');
 
   const [showConvertModal, setShowConvertModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -105,7 +106,7 @@ export function LeadsModule() {
 
   useEffect(() => {
     filterLeads();
-  }, [leads, searchTerm, statusFilter, originFilter]);
+  }, [leads, searchTerm, statusFilter, originFilter, branchFilter]);
 
   useEffect(() => {
     filterClients();
@@ -259,6 +260,10 @@ export function LeadsModule() {
 
     if (originFilter !== 'all') {
       filtered = filtered.filter(lead => lead.origin === originFilter);
+    }
+
+    if (branchFilter !== 'all') {
+      filtered = filtered.filter(lead => lead.branch_id === branchFilter);
     }
 
     setFilteredLeads(filtered);
@@ -2684,7 +2689,7 @@ export function LeadsModule() {
 
         <div className="p-6">
           <div className="bg-white rounded-xl shadow-md p-4 mb-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               <div>
                 <div className="relative">
                   <Search className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
@@ -2736,6 +2741,21 @@ export function LeadsModule() {
                 </div>
               )}
 
+              {viewMode === 'leads' && user?.role === 'admin' && (
+                <div>
+                  <select
+                    value={branchFilter}
+                    onChange={(e) => setBranchFilter(e.target.value)}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                  >
+                    <option value="all">Todas las Sucursales</option>
+                    {allBranches.map(branch => (
+                      <option key={branch.id} value={branch.id}>{branch.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <Filter className="w-4 h-4" />
                 <span className="font-semibold">
@@ -2749,11 +2769,12 @@ export function LeadsModule() {
           {viewMode === 'leads' && (
             <div className="bg-white rounded-lg shadow-md overflow-hidden">
               <div className="grid grid-cols-12 gap-4 bg-gray-50 border-b border-gray-200 px-6 py-4 font-semibold text-sm text-gray-700">
-                <div className="col-span-3">PROSPECTO</div>
+                <div className="col-span-2">PROSPECTO</div>
                 <div className="col-span-2">CONTACTO</div>
                 <div className="col-span-2">MODELO</div>
-                <div className="col-span-2">ESTADO</div>
+                <div className="col-span-1">ESTADO</div>
                 <div className="col-span-2">VENDEDOR</div>
+                <div className="col-span-2">SUCURSAL</div>
                 <div className="col-span-1">SCORE</div>
               </div>
 
@@ -2766,9 +2787,9 @@ export function LeadsModule() {
                       onClick={() => openLeadDetails(lead)}
                       className="grid grid-cols-12 gap-4 px-6 py-4 hover:bg-blue-50 transition-colors cursor-pointer items-center"
                     >
-                      <div className="col-span-3">
-                        <div className="font-bold text-gray-800">{lead.name}</div>
-                        <div className="text-sm text-gray-500 mt-0.5">{lead.origin}</div>
+                      <div className="col-span-2">
+                        <div className="font-bold text-gray-800 truncate">{lead.name}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">{lead.origin}</div>
                       </div>
 
                       <div className="col-span-2">
@@ -2777,23 +2798,29 @@ export function LeadsModule() {
                       </div>
 
                       <div className="col-span-2">
-                        <div className="text-sm font-medium text-gray-800">
+                        <div className="text-sm font-medium text-gray-800 truncate">
                           {lead.model_interested || 'Sin especificar'}
                         </div>
                       </div>
 
-                      <div className="col-span-2">
-                        <span className={`inline-block px-3 py-1 text-xs font-bold rounded-full ${getStatusColor(lead.status)}`}>
+                      <div className="col-span-1">
+                        <span className={`inline-block px-2 py-1 text-xs font-bold rounded-full ${getStatusColor(lead.status)}`}>
                           {lead.status}
                         </span>
                       </div>
 
                       <div className="col-span-2">
                         {assignedAgent ? (
-                          <div className="text-sm font-medium text-gray-800">{assignedAgent.name}</div>
+                          <div className="text-sm font-medium text-gray-800 truncate">{assignedAgent.name}</div>
                         ) : (
                           <div className="text-sm text-gray-400">Sin asignar</div>
                         )}
+                      </div>
+
+                      <div className="col-span-2">
+                        <div className="text-sm text-gray-700 truncate">
+                          {allBranches.find(b => b.id === lead.branch_id)?.name || 'N/A'}
+                        </div>
                       </div>
 
                       <div className="col-span-1">
