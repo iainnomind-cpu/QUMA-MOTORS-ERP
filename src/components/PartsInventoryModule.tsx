@@ -441,13 +441,18 @@ export function PartsInventoryModule() {
     const subtotal = saleFormData.items.reduce((sum, item) => sum + item.total, 0);
     const total = subtotal; // Sin descuento por ahora
 
+    // Solo enviar columnas válidas de parts_sales (excluir part_id, quantity, unit_price del formulario)
     const saleData = {
-      ...saleFormData,
+      customer_name: saleFormData.customer_name,
+      customer_phone: saleFormData.customer_phone,
+      customer_type: saleFormData.customer_type,
       items: saleFormData.items,
+      payment_method: saleFormData.payment_method,
+      notes: saleFormData.notes,
       subtotal,
       total,
       discount: 0,
-      branch_id: selectedBranchId // Asociar venta a sucursal
+      branch_id: selectedBranchId
     };
 
     const { error } = await supabase
