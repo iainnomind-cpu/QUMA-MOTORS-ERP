@@ -390,6 +390,54 @@ export function PartsInventoryModule() {
       return;
     }
 
+    if (saleFormData.items.length === 0) return;
+
+    // 1. Validar y preparar inventario para todos los items
+    const inventoryUpdates = [];
+
+    for (const item of saleFormData.items) {
+      // Buscar inventario específico
+      const { data: invData } = await supabase
+        .from('parts_inventory')
+        .select('id, stock_quantity')
+        .eq('branch_id', selectedBranchId)
+        .eq('catalog_id', item.part_id)
+        .maybeSingle();
+
+      let inventoryId = invData?.id;
+      let currentStock = invData?.stock_quantity || 0;
+
+      // Si no existe inventario, intentar crearlo
+      if (!inventoryId) {
+        const { data: newInv, error: createError } = await supabase
+          .from('parts_inventory')
+          .insert([{
+            branch_id: selectedBranchId,
+            catalog_id: item.part_id,
+            stock_quantity: 0,
+            min_stock_alert: 5
+          }])
+          .select()
+          .single();
+
+        if (createError || !newInv) {
+          console.error("Error creating inventory:", createError);
+          alert(`Error: No tienes permiso para vender el producto "${item.part_name}" porque no existe en el inventario y no tienes permiso para crearlo. Contacta a un gerente.`);
+          return; // Abortar toda la operación
+        }
+
+        inventoryId = newInv.id;
+        currentStock = 0;
+      }
+
+      inventoryUpdates.push({
+        inventoryId,
+        currentStock,
+        item
+      });
+    }
+
+    // 2. Registrar la venta
     const subtotal = saleFormData.items.reduce((sum, item) => sum + item.total, 0);
     const total = subtotal; // Sin descuento por ahora
 
@@ -407,63 +455,31 @@ export function PartsInventoryModule() {
       .insert([saleData]);
 
     if (!error) {
-      // Actualizar stock de cada item vendido
-      for (const item of saleFormData.items) {
-        const part = parts.find(p => p.id === item.part_id);
-        if (part) {
-          // Buscar inventario específico
-          const { data: invData } = await supabase
-            .from('parts_inventory')
-            .select('id, stock_quantity')
-            .eq('branch_id', selectedBranchId)
-            .eq('catalog_id', item.part_id)
-            .maybeSingle(); // Use maybeSingle to avoid error if not found
+      // 3. Actualizar stock y registrar movimientos (ya tenemos los IDs validados)
+      for (const update of inventoryUpdates) {
+        const { inventoryId, currentStock, item } = update;
 
-          let inventoryId = invData?.id;
-          let currentStock = invData?.stock_quantity || 0;
+        // Permitir stock negativo para no bloquear venta
+        const newStock = currentStock - item.quantity;
 
-          // Si no existe inventario, crearlo
-          if (!inventoryId) {
-            const { data: newInv, error: createError } = await supabase
-              .from('parts_inventory')
-              .insert([{
-                branch_id: selectedBranchId,
-                catalog_id: item.part_id,
-                stock_quantity: 0,
-                min_stock_alert: 5
-              }])
-              .select()
-              .single();
+        // Actualizar stock
+        await supabase
+          .from('parts_inventory')
+          .update({ stock_quantity: newStock })
+          .eq('id', inventoryId);
 
-            if (!createError && newInv) {
-              inventoryId = newInv.id;
-              currentStock = 0;
-            }
-          }
-
-          if (inventoryId) {
-            // Permitir stock negativo para no bloquear venta
-            const newStock = currentStock - item.quantity;
-
-            await supabase
-              .from('parts_inventory')
-              .update({ stock_quantity: newStock })
-              .eq('id', inventoryId);
-
-            // Registrar movimiento de inventario
-            await supabase
-              .from('parts_inventory_movements')
-              .insert([{
-                part_id: item.part_id, // Refers to catalog_id conceptually
-                branch_id: selectedBranchId,
-                movement_type: 'venta',
-                quantity: -item.quantity,
-                previous_stock: currentStock,
-                new_stock: newStock,
-                reason: `Venta a ${saleFormData.customer_name}`
-              }]);
-          }
-        }
+        // Registrar movimiento
+        await supabase
+          .from('parts_inventory_movements')
+          .insert([{
+            part_id: item.part_id, // Refers to catalog_id
+            branch_id: selectedBranchId,
+            movement_type: 'venta',
+            quantity: -item.quantity,
+            previous_stock: currentStock,
+            new_stock: newStock,
+            reason: `Venta a ${saleFormData.customer_name}`
+          }]);
       }
 
       loadAllData();
