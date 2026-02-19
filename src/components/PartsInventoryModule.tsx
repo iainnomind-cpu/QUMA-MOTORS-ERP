@@ -559,9 +559,9 @@ export function PartsInventoryModule() {
   };
 
   const filteredParts = parts.filter(part => {
-    // Solo mostrar partes que TIENEN registro de inventario en esta sucursal (o son nuevas creadas aquí)
-    // El backend devuelve inventory_id si existe record.
-    if (!part.inventory_id) return false;
+    // Si hay sucursal seleccionada, solo mostrar lo que tiene inventario (o se acaba de crear).
+    // Si NO hay sucursal (Vista Global Admin), mostrar todo el catálogo.
+    if (selectedBranchId && !part.inventory_id) return false;
 
     const matchesSearch = part.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       part.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -579,7 +579,7 @@ export function PartsInventoryModule() {
     part.sku.toLowerCase().includes(searchTermImport.toLowerCase())
   ));
 
-  const totalInventoryValue = filteredParts.reduce((sum, part) => sum + (part.stock_quantity * part.cost_price), 0);
+  const totalInventoryValue = filteredParts.reduce((sum, part) => sum + (part.stock_quantity * (part.cost_price || 0)), 0);
   const lowStockItems = filteredParts.filter(part => part.stock_quantity <= part.min_stock_alert).length;
   const totalSalesValue = sales.reduce((sum, sale) => sum + sale.total, 0);
 
@@ -602,6 +602,13 @@ export function PartsInventoryModule() {
           </h2>
           <p className="text-gray-600 mt-1">Gestión de refacciones y accesorios</p>
         </div>
+        {/* Branch Selector Shortcut or Status */}
+        {!selectedBranchId && (
+          <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4" />
+            <span>Vista Global: Selecciona una sucursal para gestionar existencias específicas.</span>
+          </div>
+        )}
       </div>
 
       {/* Métricas principales */}
@@ -882,22 +889,28 @@ export function PartsInventoryModule() {
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2">
-                              <span className={`font-bold ${part.stock_quantity <= part.min_stock_alert
-                                ? 'text-red-600'
-                                : 'text-gray-800'
-                                }`}>
-                                {part.stock_quantity}
-                              </span>
-                              {part.stock_quantity <= part.min_stock_alert && (
-                                <AlertTriangle className="w-4 h-4 text-red-600" />
+                              {part.inventory_id ? (
+                                <>
+                                  <span className={`font-bold ${part.stock_quantity <= part.min_stock_alert
+                                    ? 'text-red-600'
+                                    : 'text-gray-800'
+                                    }`}>
+                                    {part.stock_quantity}
+                                  </span>
+                                  {part.stock_quantity <= part.min_stock_alert && (
+                                    <AlertTriangle className="w-4 h-4 text-red-600" />
+                                  )}
+                                </>
+                              ) : (
+                                <span className="text-gray-400 font-mono">-</span>
                               )}
                             </div>
                           </td>
                           <td className="px-6 py-4 text-sm font-semibold text-gray-800">
-                            ${part.price_retail.toLocaleString('es-MX')}
+                            ${(part.price_retail || 0).toLocaleString('es-MX')}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-600">
-                            ${part.cost_price.toLocaleString('es-MX')}
+                            ${(part.cost_price || 0).toLocaleString('es-MX')}
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center justify-center gap-2">
