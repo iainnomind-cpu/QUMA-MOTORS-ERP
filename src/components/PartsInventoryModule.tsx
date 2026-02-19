@@ -65,6 +65,7 @@ export function PartsInventoryModule() {
   const [showPartModal, setShowPartModal] = useState(false);
   const [showSaleModal, setShowSaleModal] = useState(false);
   const [showMovementModal, setShowMovementModal] = useState(false);
+  const [selectedSale, setSelectedSale] = useState<PartSale | null>(null);
   const [editingPart, setEditingPart] = useState<PartItem | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'refaccion' | 'accesorio'>('all');
@@ -1048,7 +1049,11 @@ export function PartsInventoryModule() {
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center justify-center gap-2">
-                              <button className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors">
+                              <button
+                                onClick={() => setSelectedSale(sale)}
+                                className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                title="Ver detalle"
+                              >
                                 <Eye className="w-4 h-4" />
                               </button>
                             </div>
@@ -1744,6 +1749,101 @@ export function PartsInventoryModule() {
           </div>
         )
       }
+
+      {/* Modal Detalle de Venta */}
+      {selectedSale && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 rounded-t-2xl">
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-bold">Detalle de Venta</h3>
+                <button onClick={() => setSelectedSale(null)} className="p-1 hover:bg-white/20 rounded-lg transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <p className="text-sm opacity-90 mt-1">
+                {new Date(selectedSale.sale_date).toLocaleDateString('es-MX', {
+                  year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                })}
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Info Cliente */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h4 className="font-semibold text-gray-700 text-sm mb-2">Cliente</h4>
+                <p className="font-bold text-gray-900">{selectedSale.customer_name}</p>
+                {selectedSale.customer_phone && (
+                  <p className="text-sm text-gray-600 flex items-center gap-1 mt-1">
+                    <Phone className="w-3 h-3" /> {selectedSale.customer_phone}
+                  </p>
+                )}
+                <span className={`inline-block mt-2 px-2 py-1 text-xs font-bold rounded ${selectedSale.customer_type === 'walk-in' ? 'bg-gray-200 text-gray-800' :
+                    selectedSale.customer_type === 'cliente' ? 'bg-blue-100 text-blue-800' :
+                      'bg-green-100 text-green-800'
+                  }`}>
+                  {selectedSale.customer_type === 'walk-in' ? 'Walk-in' :
+                    selectedSale.customer_type === 'cliente' ? 'Cliente' : 'Lead'}
+                </span>
+              </div>
+
+              {/* Items */}
+              <div>
+                <h4 className="font-semibold text-gray-700 text-sm mb-2">Productos ({selectedSale.items.length})</h4>
+                <div className="border rounded-lg divide-y">
+                  {selectedSale.items.map((item: any, idx: number) => (
+                    <div key={idx} className="p-3 flex justify-between items-center">
+                      <div>
+                        <p className="font-medium text-gray-800">{item.part_name || 'Producto'}</p>
+                        <p className="text-xs text-gray-500">{item.quantity} x ${Number(item.unit_price || 0).toLocaleString('es-MX')}</p>
+                      </div>
+                      <p className="font-semibold text-gray-900">${Number(item.total || 0).toLocaleString('es-MX')}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Totales */}
+              <div className="bg-blue-50 rounded-lg p-4 space-y-2">
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>Subtotal</span>
+                  <span>${Number(selectedSale.subtotal || 0).toLocaleString('es-MX')}</span>
+                </div>
+                {selectedSale.discount > 0 && (
+                  <div className="flex justify-between text-sm text-red-600">
+                    <span>Descuento</span>
+                    <span>-${Number(selectedSale.discount).toLocaleString('es-MX')}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold text-lg text-gray-900 border-t pt-2">
+                  <span>Total</span>
+                  <span>${Number(selectedSale.total || 0).toLocaleString('es-MX')}</span>
+                </div>
+              </div>
+
+              {/* Método de pago y notas */}
+              {selectedSale.payment_method && (
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <DollarSign className="w-4 h-4" />
+                  <span>Método: <strong>{selectedSale.payment_method}</strong></span>
+                </div>
+              )}
+              {selectedSale.notes && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-gray-700">
+                  <strong>Notas:</strong> {selectedSale.notes}
+                </div>
+              )}
+
+              <button
+                onClick={() => setSelectedSale(null)}
+                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-3 rounded-lg font-semibold transition-all"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div >
   );
 }
