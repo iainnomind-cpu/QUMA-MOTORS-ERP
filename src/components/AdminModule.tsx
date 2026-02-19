@@ -105,7 +105,7 @@ export function AdminModule() {
   const NOTIFICATION_EVENTS = [
     { key: 'new_lead', label: 'Nuevo Lead Asignado', icon: '🔔', vars: ['nombre', 'telefono', 'modelo'] },
     { key: 'test_drive_scheduled', label: 'Prueba de Manejo Programada', icon: '🏍️', vars: ['nombre', 'modelo', 'fecha', 'hora'] },
-    { key: 'parts_request', label: 'Solicitud de Refacción', icon: '🔧', vars: ['nombre', 'refaccion', 'modelo', 'urgencia'] },
+    { key: 'parts_request', label: 'Solicitud de Refacción', icon: '🔧', vars: ['nombre', 'refaccion', 'modelo', 'ubicacion'] },
     { key: 'service_completed', label: 'Servicio Completado', icon: '✅', vars: ['nombre', 'tipo_servicio', 'modelo'] },
     { key: 'financing_approved', label: 'Financiamiento Aprobado', icon: '🎉', vars: ['nombre', 'modelo', 'plan', 'monto'] },
     { key: 'sale_completed', label: 'Venta Completada', icon: '🎊', vars: ['vendedor', 'cliente', 'modelo', 'monto'] },
