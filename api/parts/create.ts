@@ -196,24 +196,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 let mgrPhone = manager.phone.replace(/\D/g, '');
                 if (mgrPhone.length === 10) mgrPhone = '52' + mgrPhone;
 
-                // Ubicación del cliente para el parámetro urgencia
-                const clientLocation = [body.city, body.state].filter(Boolean).join(', ') || 'No especificada';
-
                 const notificationBody = {
                     messaging_product: 'whatsapp',
                     to: mgrPhone,
                     type: 'template',
                     template: {
-                        name: 'parts_request',
+                        name: 'notif_solicitud_refaccion',
                         language: { code: 'es_MX' },
                         components: [
                             {
                                 type: 'body',
                                 parameters: [
-                                    { type: 'text', text: body.name },                           // {{1}} nombre
-                                    { type: 'text', text: body.part_name },                      // {{2}} refaccion
-                                    { type: 'text', text: body.motorcycle_model || 'No especificado' }, // {{3}} modelo
-                                    { type: 'text', text: clientLocation }                       // {{4}} urgencia → ciudad
+                                    { type: 'text', text: body.name },                           // {{1}} Cliente
+                                    { type: 'text', text: body.part_name },                      // {{2}} Refacción
+                                    { type: 'text', text: body.motorcycle_model || 'No especificado' }  // {{3}} Modelo
                                 ]
                             }
                         ]
