@@ -1375,25 +1375,33 @@ export function PartsInventoryModule() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Stock Inicial</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Stock Inicial
+                      {!selectedBranchId && <span className="text-xs text-orange-600 ml-2">(Selecciona sucursal para editar)</span>}
+                    </label>
                     <input
                       type="number"
                       value={partFormData.stock}
                       onChange={(e) => setPartFormData({ ...partFormData, stock: e.target.value })}
-                      className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                      className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-500"
                       placeholder="0"
                       min="0"
+                      disabled={!selectedBranchId}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Stock Mínimo</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Stock Mínimo
+                      {!selectedBranchId && <span className="text-xs text-orange-600 ml-2">(Selecciona sucursal)</span>}
+                    </label>
                     <input
                       type="number"
                       value={partFormData.min_stock}
                       onChange={(e) => setPartFormData({ ...partFormData, min_stock: e.target.value })}
-                      className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                      className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-500"
                       placeholder="0"
                       min="0"
+                      disabled={!selectedBranchId}
                     />
                   </div>
                 </div>
