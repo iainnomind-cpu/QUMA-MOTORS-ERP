@@ -402,13 +402,17 @@ export function AdminModule() {
 
   const openEditNotification = (notif: WhatsAppNotification) => {
     setEditingNotification(notif);
+
+    // Find latest config to ensure we have up-to-date variables
+    const eventConfig = NOTIFICATION_EVENTS.find(e => e.key === notif.event_key);
+
     setNewNotification({
       event_key: notif.event_key,
       event_label: notif.event_label,
       description: notif.description || '',
       template_name: notif.template_name,
       message_template: notif.message_template,
-      variables: notif.variables || [],
+      variables: eventConfig ? eventConfig.vars : (notif.variables || []),
       recipient_type: notif.recipient_type,
       recipient_phone: notif.recipient_phone || '',
       category: notif.category || 'UTILITY',
