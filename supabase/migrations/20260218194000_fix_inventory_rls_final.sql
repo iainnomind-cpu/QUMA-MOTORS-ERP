@@ -7,7 +7,7 @@ CREATE OR REPLACE FUNCTION check_inventory_insert_permission(target_branch_id uu
 RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER -- IMPORTANTE: Esto salta las restricciones RLS de user_profiles
-SET search_path = public -- Seguridad para evitar inyecciones
+SET search_path = public, auth, extensions -- Incluir esquemas necesarios para auth.uid()
 AS $$
 BEGIN
   RETURN EXISTS (
@@ -15,7 +15,7 @@ BEGIN
     FROM user_profiles up
     WHERE up.id = auth.uid() 
     AND (
-      -- Verificar Rol (case insensitive para seguridad)
+      -- Verificar Rol (ignorando mayúsculas/minúsculas)
       LOWER(up.role) = 'admin'
       OR
       (LOWER(up.role) = 'gerente' AND up.branch_id = target_branch_id)
