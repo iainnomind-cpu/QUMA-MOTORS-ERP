@@ -1509,8 +1509,8 @@ export function PartsInventoryModule() {
                       <label className="block text-sm font-semibold text-gray-700 mb-2">Cantidad</label>
                       <input
                         type="number"
-                        value={saleFormData.quantity}
-                        onChange={(e) => setSaleFormData({ ...saleFormData, quantity: e.target.value })}
+                        value={newSaleItem.quantity}
+                        onChange={(e) => setNewSaleItem({ ...newSaleItem, quantity: e.target.value })}
                         className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
                         placeholder="0"
                         min="1"
