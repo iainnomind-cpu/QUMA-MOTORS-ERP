@@ -382,11 +382,55 @@ async function executeCreateTemplate({ name, category, message_template, buttons
     const data = await response.json();
 
     if (data.error) {
+        // Handle "Template already exists" error (Code 100 or specific message)
+        const isDuplicate = data.error.message.includes('already exists') ||
+            data.error.message.includes('Ya existe contenido') ||
+            data.error.code === 100;
+
+        if (isDuplicate) {
+            console.log(`Template ${normalizedName} exists. Attempting update...`);
+
+            // a. Find existing template ID
+            const searchUrl = `https://graph.facebook.com/${API_VERSION}/${WABA_ID}/message_templates?name=${normalizedName}&limit=1`;
+            const searchRes = await fetch(searchUrl, {
+                headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` }
+            });
+            const searchData = await searchRes.json();
+
+            if (searchData.data && searchData.data.length > 0) {
+                const existingId = searchData.data[0].id;
+
+                // b. Update existing template
+                const updateUrl = `https://graph.facebook.com/${API_VERSION}/${existingId}`;
+                const updateRes = await fetch(updateUrl, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        components: components
+                    })
+                });
+                const updateData = await updateRes.json();
+
+                if (updateData.success) {
+                    // Update DB with Meta ID
+                    await supabase.from('whatsapp_templates').update({
+                        meta_id: existingId,
+                        status: 'pending' // Re-review needed after edit
+                    }).eq('id', inserted.id);
+
+                    return { inserted, meta_id: existingId, action: 'updated' };
+                } else {
+                    throw new Error('Meta Update Failed: ' + (updateData.error?.message || JSON.stringify(updateData)));
+                }
+            }
+        }
+
+        // If not duplicate or update failed
         await supabase.from('whatsapp_templates').delete().eq('id', inserted.id);
         throw new Error('Meta Rejected: ' + (data.error.error_user_msg || data.error.message));
     }
 
-    return { inserted, meta_id: data.id };
+    return { inserted, meta_id: data.id, action: 'created' };
 }
 
 // --- 3. SYNC TEMPLATES CORE LOGIC ---
