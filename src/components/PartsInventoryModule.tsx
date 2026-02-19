@@ -663,7 +663,7 @@ export function PartsInventoryModule() {
           >
             <div className="flex items-center justify-center gap-2">
               <Package className="w-5 h-5" />
-              Inventario ({parts.length})
+              Inventario ({filteredParts.length})
             </div>
           </button>
           <button
@@ -862,64 +862,84 @@ export function PartsInventoryModule() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {filteredParts.map((part) => (
-                      <tr key={part.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4 text-sm font-mono text-gray-800">{part.sku}</td>
-                        <td className="px-6 py-4">
-                          <div>
-                            <div className="font-semibold text-gray-800">{part.name}</div>
-                            {part.brand && <div className="text-xs text-gray-500">{part.brand}</div>}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`inline-block px-2 py-1 text-xs font-bold rounded ${part.category === 'refaccion'
-                            ? 'bg-blue-100 text-blue-800'
-                            : 'bg-green-100 text-green-800'
-                            }`}>
-                            {part.category === 'refaccion' ? 'Refacción' : 'Accesorio'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <span className={`font-bold ${part.stock_quantity <= part.min_stock_alert
-                              ? 'text-red-600'
-                              : 'text-gray-800'
+                    {filteredParts.length > 0 ? (
+                      filteredParts.map((part) => (
+                        <tr key={part.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4 text-sm font-mono text-gray-800">{part.sku}</td>
+                          <td className="px-6 py-4">
+                            <div>
+                              <div className="font-semibold text-gray-800">{part.name}</div>
+                              {part.brand && <div className="text-xs text-gray-500">{part.brand}</div>}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`inline-block px-2 py-1 text-xs font-bold rounded ${part.category === 'refaccion'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-green-100 text-green-800'
                               }`}>
-                              {part.stock_quantity}
+                              {part.category === 'refaccion' ? 'Refacción' : 'Accesorio'}
                             </span>
-                            {part.stock_quantity <= part.min_stock_alert && (
-                              <AlertTriangle className="w-4 h-4 text-red-600" />
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-sm font-semibold text-gray-800">
-                          ${part.price_retail.toLocaleString('es-MX')}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">
-                          ${part.cost_price.toLocaleString('es-MX')}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center justify-center gap-2">
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2">
+                              <span className={`font-bold ${part.stock_quantity <= part.min_stock_alert
+                                ? 'text-red-600'
+                                : 'text-gray-800'
+                                }`}>
+                                {part.stock_quantity}
+                              </span>
+                              {part.stock_quantity <= part.min_stock_alert && (
+                                <AlertTriangle className="w-4 h-4 text-red-600" />
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-sm font-semibold text-gray-800">
+                            ${part.price_retail.toLocaleString('es-MX')}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600">
+                            ${part.cost_price.toLocaleString('es-MX')}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={() => handleOpenPartModal(part)}
+                                className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeletePart(part.id)}
+                                className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                          <div className="flex flex-col items-center gap-3">
+                            <Package className="w-12 h-12 text-gray-300" />
+                            <p className="text-lg font-medium text-gray-700">No hay productos en el inventario</p>
+                            <p className="text-sm max-w-sm mx-auto mb-4">
+                              Hay {parts.length} productos en el catálogo global. Importa productos para gestionar su stock en esta sucursal.
+                            </p>
                             <button
-                              onClick={() => handleOpenPartModal(part)}
-                              className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                              onClick={() => setShowImportModal(true)}
+                              className="text-blue-600 hover:text-blue-800 font-semibold underline"
                             >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDeletePart(part.id)}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
-                            >
-                              <Trash2 className="w-4 h-4" />
+                              Importar del Catálogo
                             </button>
                           </div>
                         </td>
                       </tr>
-                    ))}
+                    )}
                   </tbody>
                 </table>
               </div>
-            </div >
+            </div>
           )
           }
 
@@ -1149,12 +1169,12 @@ export function PartsInventoryModule() {
                               value={request.status}
                               onChange={(e) => handleUpdateRequestStatus(request.id, e.target.value)}
                               className={`px-3 py-1.5 text-xs font-bold rounded-full border-2 cursor-pointer transition-colors ${request.status === 'pendiente'
-                                  ? 'bg-yellow-100 text-yellow-800 border-yellow-300'
-                                  : request.status === 'en_proceso'
-                                    ? 'bg-blue-100 text-blue-800 border-blue-300'
-                                    : request.status === 'completada'
-                                      ? 'bg-green-100 text-green-800 border-green-300'
-                                      : 'bg-red-100 text-red-800 border-red-300'
+                                ? 'bg-yellow-100 text-yellow-800 border-yellow-300'
+                                : request.status === 'en_proceso'
+                                  ? 'bg-blue-100 text-blue-800 border-blue-300'
+                                  : request.status === 'completada'
+                                    ? 'bg-green-100 text-green-800 border-green-300'
+                                    : 'bg-red-100 text-red-800 border-red-300'
                                 }`}
                             >
                               <option value="pendiente">Pendiente</option>
