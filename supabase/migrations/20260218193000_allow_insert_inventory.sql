@@ -1,6 +1,8 @@
--- Add INSERT policy for Managers ONLY (and Admins) on parts_inventory
--- Sales Agents cannot insert (must sell existing inventory)
+-- 1. Limpiar políticas anteriores
+DROP POLICY IF EXISTS "Gerentes insertan en su inventario" ON parts_inventory;
+DROP POLICY IF EXISTS "Gerentes y Vendedores insertan en su inventario" ON parts_inventory;
 
+-- 2. Crear política permitiendo SOLO a Gerentes y Admins (usando ID para mayor seguridad)
 CREATE POLICY "Gerentes insertan en su inventario"
   ON parts_inventory
   FOR INSERT
@@ -9,13 +11,13 @@ CREATE POLICY "Gerentes insertan en su inventario"
     EXISTS (
       SELECT 1 
       FROM user_profiles up
-      WHERE up.email = auth.email() 
+      WHERE up.id = auth.uid() 
       AND (
-        -- Managers can insert for their assigned branch
-        (up.role = 'gerente' AND up.branch_id = branch_id)
-        OR 
-        -- Admins can insert anywhere
+        -- Caso 1: Es Admin
         up.role = 'admin'
+        OR
+        -- Caso 2: Es Gerente coincidiendo sucursal
+        (up.role = 'gerente' AND up.branch_id = parts_inventory.branch_id)
       )
     )
   );
