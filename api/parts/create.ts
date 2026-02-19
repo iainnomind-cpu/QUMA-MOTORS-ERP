@@ -209,7 +209,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                                 parameters: [
                                     { type: 'text', text: body.name },                           // {{1}} Cliente
                                     { type: 'text', text: body.part_name },                      // {{2}} Refacción
-                                    { type: 'text', text: body.motorcycle_model || 'No especificado' }  // {{3}} Modelo
+                                    { type: 'text', text: body.motorcycle_model || 'No especificado' }, // {{3}} Modelo
+                                    { type: 'text', text: [body.city, body.state].filter(Boolean).join(', ') || 'No especificada' } // {{4}} Ubicación
                                 ]
                             }
                         ]
