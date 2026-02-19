@@ -417,15 +417,38 @@ export function PartsInventoryModule() {
             .select('id, stock_quantity')
             .eq('branch_id', selectedBranchId)
             .eq('catalog_id', item.part_id)
-            .single();
+            .maybeSingle(); // Use maybeSingle to avoid error if not found
 
-          if (invData) {
-            const newStock = Math.max(0, invData.stock_quantity - item.quantity);
+          let inventoryId = invData?.id;
+          let currentStock = invData?.stock_quantity || 0;
+
+          // Si no existe inventario, crearlo
+          if (!inventoryId) {
+            const { data: newInv, error: createError } = await supabase
+              .from('parts_inventory')
+              .insert([{
+                branch_id: selectedBranchId,
+                catalog_id: item.part_id,
+                stock_quantity: 0,
+                min_stock_alert: 5
+              }])
+              .select()
+              .single();
+
+            if (!createError && newInv) {
+              inventoryId = newInv.id;
+              currentStock = 0;
+            }
+          }
+
+          if (inventoryId) {
+            // Permitir stock negativo para no bloquear venta
+            const newStock = currentStock - item.quantity;
 
             await supabase
               .from('parts_inventory')
               .update({ stock_quantity: newStock })
-              .eq('id', invData.id);
+              .eq('id', inventoryId);
 
             // Registrar movimiento de inventario
             await supabase
@@ -435,7 +458,7 @@ export function PartsInventoryModule() {
                 branch_id: selectedBranchId,
                 movement_type: 'venta',
                 quantity: -item.quantity,
-                previous_stock: invData.stock_quantity,
+                previous_stock: currentStock,
                 new_stock: newStock,
                 reason: `Venta a ${saleFormData.customer_name}`
               }]);
@@ -1475,7 +1498,7 @@ export function PartsInventoryModule() {
                         className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
                       >
                         <option value="">Seleccionar producto</option>
-                        {parts.filter(p => p.active && p.stock_quantity > 0).map(part => (
+                        {parts.filter(p => p.active).map(part => (
                           <option key={part.id} value={part.id}>
                             {part.name} (Stock: {part.stock_quantity})
                           </option>
