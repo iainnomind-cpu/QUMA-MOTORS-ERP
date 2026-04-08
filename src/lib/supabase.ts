@@ -16,7 +16,10 @@ export const supabase = createClient(
   {
     auth: {
       // DESACTIVAR EL LOCK NATIVO: Evita el bug donde getSession() cuelga buscando un navigator.locks bloqueado
-      lock: (name, callback) => callback()
+      lock: (name, options_or_cb, cb) => {
+        const callback = typeof options_or_cb === 'function' ? options_or_cb : cb;
+        return callback ? callback() : Promise.resolve();
+      }
     }
   }
 );
