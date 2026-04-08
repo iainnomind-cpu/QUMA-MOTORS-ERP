@@ -1,0 +1,8 @@
+{
+  "id": "83f89472-bdc4-42aa-b68d-98369328ad38",
+  "name": "Prueba",
+  "category": "promotional",
+  "message_template": "Hola {{name}} esta es una prueba",
+  "active": true,
+  "created_at": "2026-02-10T22:31:09.124002+00:00"
+}
