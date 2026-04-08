@@ -15,12 +15,8 @@ export const supabase = createClient(
   supabaseAnonKey || 'dummy',
   {
     auth: {
-      // DESACTIVAR EL LOCK NATIVO: Evita un bug conocido de Supabase v2 donde el navegador 
-      // bloquea "navigator.locks" (en PWA, modo incógnito, etc) y hace que getSession() cuelgue de forma infinita.
-      lock: {
-        acquire: () => Promise.resolve(true),
-        release: () => Promise.resolve(),
-      }
+      // DESACTIVAR EL LOCK NATIVO: Evita el bug donde getSession() cuelga buscando un navigator.locks bloqueado
+      lock: (name, callback) => callback()
     }
   }
 );
