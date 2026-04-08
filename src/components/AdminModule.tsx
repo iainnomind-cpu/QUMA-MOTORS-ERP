@@ -1282,7 +1282,9 @@ export function AdminModule() {
               ) : (
                 <div className="grid grid-cols-1 gap-8">
                   {Object.entries(
-                    settings.reduce((acc, setting) => {
+                    settings
+                      .filter(s => s.setting_key !== 'gmail_leads_config' && s.category !== 'integrations')
+                      .reduce((acc, setting) => {
                       const cat = setting.category || 'Otros';
                       if (!acc[cat]) acc[cat] = [];
                       acc[cat].push(setting);
