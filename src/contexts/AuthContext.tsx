@@ -233,10 +233,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         console.log('Initializing auth...');
 
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        // Agregamos un timeout de 5 segundos para que no se quede cargando infinito
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise<{data: any, error: any}>((resolve) => 
+          setTimeout(() => resolve({ data: { session: null }, error: new Error("Supabase auth timeout") }), 5000)
+        );
+        
+        const { data, error: sessionError } = await Promise.race([sessionPromise, timeoutPromise]);
+        const session = data?.session;
 
         if (sessionError) {
-          console.error('Session error:', sessionError);
+          console.error('Session error (o timeout):', sessionError);
           if (mountedRef.current) {
             setLoading(false);
           }
