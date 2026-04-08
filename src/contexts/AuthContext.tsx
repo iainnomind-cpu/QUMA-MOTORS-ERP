@@ -154,10 +154,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
 
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
+      // Timeout de 10 segundos para el login
+      const loginPromise = supabase.auth.signInWithPassword({ email, password });
+      const timeoutPromise = new Promise<{data: any, error: any}>((resolve) => 
+        setTimeout(() => resolve({ data: { user: null }, error: new Error(`El servidor tardó demasiado en responder. Verifica que VITE_SUPABASE_URL comience con https:// y no con postgres://`) }), 10000)
+      );
+      
+      const { data, error } = await Promise.race([loginPromise, timeoutPromise]);
 
       if (error) {
         throw error;
@@ -352,7 +355,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       subscription.unsubscribe();
     };
-  }, [user, profile, loading]);
+  }, [user, profile]);
 
   return (
     <AuthContext.Provider
