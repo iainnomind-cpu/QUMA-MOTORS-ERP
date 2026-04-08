@@ -3,11 +3,14 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Supabase environment variables are missing');
+if (!supabaseUrl || !supabaseAnonKey || !supabaseUrl.includes('http')) {
+  console.error('CRITICAL: Supabase variables are missing from the build! URL:', supabaseUrl);
+  setTimeout(() => {
+    alert('ERROR CRÍTICO: Las variables VITE_SUPABASE_URL no llegaron correctamente al código de Producción. ¡Verifica el panel de Vercel y re-compila!');
+  }, 2000);
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl || 'https://dummy.supabase.co', supabaseAnonKey || 'dummy');
 
 // ===== Multi-Branch Types =====
 export interface Branch {
