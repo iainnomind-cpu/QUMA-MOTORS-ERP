@@ -257,21 +257,66 @@ export function AdminModule() {
   const handleSaveEmailConfig = async () => {
     setEmailSaving(true);
     try {
-      const res = await fetch('/api/leads/gmail-leads?action=save_config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(emailConfig)
-      });
-      const result = await res.json();
-      if (result.success) {
+      // Guardar directamente via Supabase (sesión autenticada del admin) 
+      // en vez del API endpoint que tiene problemas de permisos con service_role key
+      const { data: existing } = await supabase
+        .from('system_settings')
+        .select('id, setting_value')
+        .eq('setting_key', 'gmail_leads_config')
+        .maybeSingle();
+
+      const currentValue = existing?.setting_value?.value || {};
+
+      const newConfig = {
+        gmail_email: emailConfig.gmail_email,
+        gmail_app_password: (emailConfig.gmail_app_password && !emailConfig.gmail_app_password.includes('••••'))
+          ? emailConfig.gmail_app_password
+          : currentValue.gmail_app_password || '',
+        sender_filter: emailConfig.sender_filter || 'cliente_potencial@yamaha-motor.com.mx',
+        auto_sync_enabled: emailConfig.enabled, // unificado con enabled
+        sync_interval_minutes: 1440, // 1 vez al día (cron de Vercel)
+        enabled: emailConfig.enabled,
+        last_sync_at: currentValue.last_sync_at || null,
+        last_sync_result: currentValue.last_sync_result || null,
+      };
+
+      const settingPayload = {
+        setting_value: {
+          label: 'Configuración Email Leads (Yamaha)',
+          type: 'json',
+          value: newConfig
+        },
+        updated_at: new Date().toISOString()
+      };
+
+      let error;
+      if (existing) {
+        ({ error } = await supabase
+          .from('system_settings')
+          .update(settingPayload)
+          .eq('setting_key', 'gmail_leads_config'));
+      } else {
+        ({ error } = await supabase
+          .from('system_settings')
+          .insert([{
+            setting_key: 'gmail_leads_config',
+            ...settingPayload,
+            category: 'integrations',
+            description: 'Configuración para importar leads desde correos Gmail',
+            editable_by_role: ['admin'],
+            is_public: false
+          }]));
+      }
+
+      if (error) {
+        setEmailTestResult({ success: false, message: `Error: ${error.message}` });
+      } else {
         log('update', 'email_config', { email: emailConfig.gmail_email, enabled: emailConfig.enabled, action: 'Configuración email leads actualizada' });
         setEmailTestResult({ success: true, message: '✅ Configuración guardada exitosamente' });
         setTimeout(() => setEmailTestResult(null), 4000);
-      } else {
-        setEmailTestResult({ success: false, message: `Error: ${result.error}` });
       }
     } catch (err: any) {
-      setEmailTestResult({ success: false, message: `Error de red: ${err.message}` });
+      setEmailTestResult({ success: false, message: `Error: ${err.message}` });
     } finally {
       setEmailSaving(false);
     }
