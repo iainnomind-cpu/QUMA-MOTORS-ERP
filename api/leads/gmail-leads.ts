@@ -357,7 +357,7 @@ async function createLeadFromEmail(parsed: ParsedYamahaLead, gmailMessageId: str
       status: 'error',
       error_message: errorMsg,
       synced_by: 'auto'
-    }]).catch(() => {});
+    }]).then(() => {}).catch(() => {});
 
     return { success: false, error: errorMsg };
   }
@@ -447,7 +447,7 @@ async function syncGmailLeads(config: GmailConfig): Promise<{
               error_message: 'No se pudieron extraer datos del correo',
               raw_body: (typeof htmlBody === 'string' ? htmlBody : '').substring(0, 5000),
               synced_by: 'auto'
-            }]).catch(() => {});
+            }]).then(() => {}).catch(() => {});
 
             // Mark as seen anyway
             messages.push(msg.uid);
