@@ -737,7 +737,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // ===== POST: Sync =====
   if (action === 'sync') {
-    const config = await getGmailConfig();
+    // Aceptar config del body (enviada por el admin) o leer de BD como fallback
+    let config: GmailConfig | null = null;
+
+    if (req.body?.gmail_email && req.body?.gmail_app_password) {
+      config = req.body as GmailConfig;
+    } else {
+      config = await getGmailConfig();
+    }
 
     if (!config || !config.gmail_email || !config.gmail_app_password) {
       return res.status(400).json({

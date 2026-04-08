@@ -341,7 +341,8 @@ export function AdminModule() {
 
       const res = await fetch('/api/leads/gmail-leads?action=sync', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(emailConfig)
       });
       const result = await res.json();
       setEmailSyncResult(result);
