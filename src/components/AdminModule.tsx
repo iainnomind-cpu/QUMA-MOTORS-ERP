@@ -1712,7 +1712,7 @@ export function AdminModule() {
                     <p className="text-xs text-gray-500 mt-1">Solo se procesarán correos de este remitente.</p>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                  <div className="flex items-center gap-4 pt-4 border-t border-gray-100">
                     <div className="flex items-center gap-3">
                       <button
                         onClick={() => setEmailConfig({ ...emailConfig, enabled: !emailConfig.enabled })}
@@ -1720,29 +1720,7 @@ export function AdminModule() {
                       >
                         <span className={`${emailConfig.enabled ? 'translate-x-6' : 'translate-x-1'} inline-block h-5 w-5 transform rounded-full bg-white transition-transform shadow-sm`} />
                       </button>
-                      <span className="text-sm font-medium text-gray-700">Activar importación</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => setEmailConfig({ ...emailConfig, auto_sync_enabled: !emailConfig.auto_sync_enabled })}
-                        className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${emailConfig.auto_sync_enabled ? 'bg-blue-600' : 'bg-gray-200'}`}
-                      >
-                        <span className={`${emailConfig.auto_sync_enabled ? 'translate-x-6' : 'translate-x-1'} inline-block h-5 w-5 transform rounded-full bg-white transition-transform shadow-sm`} />
-                      </button>
-                      <span className="text-sm font-medium text-gray-700">Auto-sincronizar</span>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">Intervalo (minutos)</label>
-                      <select
-                        value={emailConfig.sync_interval_minutes}
-                        onChange={(e) => setEmailConfig({ ...emailConfig, sync_interval_minutes: parseInt(e.target.value) })}
-                        className="px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-sm w-full"
-                      >
-                        <option value={15}>Cada 15 min</option>
-                        <option value={30}>Cada 30 min</option>
-                        <option value={60}>Cada 1 hora</option>
-                        <option value={120}>Cada 2 horas</option>
-                      </select>
+                      <span className="text-sm font-medium text-gray-700">Activar importación automática (1 vez al día)</span>
                     </div>
                   </div>
 
