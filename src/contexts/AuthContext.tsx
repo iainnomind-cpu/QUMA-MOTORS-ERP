@@ -296,7 +296,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (event === 'SIGNED_IN' && session?.user) {
           console.log('User signed in event received, userId:', session.user.id);
-          console.log('Current user state:', { hasUser: !!user, hasProfile: !!profile, userId: user?.id });
 
           if (user?.id === session.user.id && profile) {
             console.log('✓ User already authenticated and loaded, ignoring SIGNED_IN event');
@@ -310,24 +309,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           lastSignedInTimeRef.current = now;
 
-          console.log('→ New sign in detected, loading profile...');
+          console.log('→ New sign in detected, dispatching profile load...');
           if (mountedRef.current) {
             setLoading(true);
-            console.log('Loading state set to true');
           }
 
-          try {
-            const success = await loadProfile(session.user.id);
-            console.log('SIGNED_IN: Profile load result:', success);
-          } catch (error) {
-            console.error('SIGNED_IN: Error loading profile:', error);
-          } finally {
-            console.log('SIGNED_IN: Finally block executing, mountedRef:', mountedRef.current);
-            if (mountedRef.current) {
-              console.log('SIGNED_IN: Setting loading to false');
-              setLoading(false);
-            }
-          }
+          // FIRE AND FORGET! ¡Sin await! Esto evita el DEADLOCK de Supabase JS v2
+          // donde el onAuthStateChange bloquea el getSession() interno usado por PostgREST.
+          loadProfile(session.user.id)
+            .then(success => {
+              console.log('SIGNED_IN: Profile load result:', success);
+            })
+            .catch(error => {
+              console.error('SIGNED_IN: Error loading profile:', error);
+            })
+            .finally(() => {
+              if (mountedRef.current) {
+                setLoading(false);
+              }
+            });
+            
         } else if (event === 'SIGNED_OUT') {
           console.log('User signed out');
           if (mountedRef.current) {
@@ -337,11 +338,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         } else if (event === 'TOKEN_REFRESHED' && session?.user) {
           console.log('Token refreshed, silently loading profile...');
-          try {
-            await loadProfile(session.user.id);
-          } catch (error) {
-            console.error('Error refreshing profile after token refresh:', error);
-          }
+          // Sin await para evitar deadlocks
+          loadProfile(session.user.id).catch(err => console.error('Error refreshing profile:', err));
         }
       }
     );
