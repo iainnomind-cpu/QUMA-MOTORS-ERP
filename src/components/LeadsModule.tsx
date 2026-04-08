@@ -1566,6 +1566,8 @@ export function LeadsModule() {
                 <option value="Telefónico">Telefónico</option>
                 <option value="Facebook">Facebook</option>
                 <option value="Instagram">Instagram</option>
+                <option value="Correo Yamaha">Correo Yamaha</option>
+                <option value="Chatbot WA">Chatbot WA</option>
               </select>
             </div>
 

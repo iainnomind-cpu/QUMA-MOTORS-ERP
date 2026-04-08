@@ -4,10 +4,10 @@ import { useBranch } from '../contexts/BranchContext';
 import { useAuth } from '../contexts/AuthContext';
 import {
   Settings, Users, Award, DollarSign, Sliders, Shield, Activity, Plus, Edit2, Trash2, X, Save, Eye, EyeOff, ToggleLeft, ToggleRight, TrendingUp,
-  MessageSquare, Bell, Send, RefreshCw, Phone, CheckCircle, Clock, AlertTriangle, XCircle, Search, Filter, Calendar, Image, Building2, MapPin, Package
+  MessageSquare, Bell, Send, RefreshCw, Phone, CheckCircle, Clock, AlertTriangle, XCircle, Search, Filter, Calendar, Image, Building2, MapPin, Package, Mail, Download, Loader2, Wifi
 } from 'lucide-react';
 
-type ViewMode = 'overview' | 'users' | 'scoring' | 'promotions' | 'settings' | 'catalog' | 'logs' | 'notifications' | 'branches';
+type ViewMode = 'overview' | 'users' | 'scoring' | 'promotions' | 'settings' | 'catalog' | 'logs' | 'notifications' | 'branches' | 'email-leads';
 
 interface WhatsAppNotification {
   id: string;
@@ -60,6 +60,26 @@ export function AdminModule() {
     name: '', code: '', address: '', city: '', state: '', phone: '', manager_name: ''
   });
   const [geocodingStatus, setGeocodingStatus] = useState<string>('');
+
+  // ===== Email Leads State =====
+  const [emailConfig, setEmailConfig] = useState({
+    gmail_email: '',
+    gmail_app_password: '',
+    sender_filter: 'cliente_potencial@yamaha-motor.com.mx',
+    auto_sync_enabled: false,
+    sync_interval_minutes: 30,
+    enabled: false,
+    last_sync_at: null as string | null,
+    last_sync_result: null as string | null
+  });
+  const [emailConfigLoaded, setEmailConfigLoaded] = useState(false);
+  const [emailTestResult, setEmailTestResult] = useState<{ success: boolean; message: string; unreadCount?: number } | null>(null);
+  const [emailTesting, setEmailTesting] = useState(false);
+  const [emailSyncing, setEmailSyncing] = useState(false);
+  const [emailSyncResult, setEmailSyncResult] = useState<any>(null);
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [emailImportHistory, setEmailImportHistory] = useState<any[]>([]);
+  const [showAppPasswordHelp, setShowAppPasswordHelp] = useState(false);
 
   const [userSearch, setUserSearch] = useState('');
   const [catalogSearch, setCatalogSearch] = useState('');
@@ -129,6 +149,13 @@ export function AdminModule() {
     loadAllData();
   }, []);
 
+  useEffect(() => {
+    if (viewMode === 'email-leads' && !emailConfigLoaded) {
+      loadEmailConfig();
+      loadEmailImportHistory();
+    }
+  }, [viewMode]);
+
   const loadAllData = async () => {
     await Promise.all([
       loadUsers(),
@@ -189,6 +216,122 @@ export function AdminModule() {
     const { data } = await supabase.from('catalog').select('*').order('price_cash');
     if (data) setCatalog(data);
   };
+
+  // ===== Email Leads Functions =====
+  const loadEmailConfig = async () => {
+    try {
+      const { data } = await supabase
+        .from('system_settings')
+        .select('setting_value')
+        .eq('setting_key', 'gmail_leads_config')
+        .maybeSingle();
+
+      if (data?.setting_value?.value) {
+        const cfg = data.setting_value.value;
+        setEmailConfig({
+          gmail_email: cfg.gmail_email || '',
+          gmail_app_password: cfg.gmail_app_password || '',
+          sender_filter: cfg.sender_filter || 'cliente_potencial@yamaha-motor.com.mx',
+          auto_sync_enabled: cfg.auto_sync_enabled || false,
+          sync_interval_minutes: cfg.sync_interval_minutes || 30,
+          enabled: cfg.enabled || false,
+          last_sync_at: cfg.last_sync_at || null,
+          last_sync_result: cfg.last_sync_result || null
+        });
+      }
+      setEmailConfigLoaded(true);
+    } catch (err) {
+      console.error('Error loading email config:', err);
+    }
+  };
+
+  const loadEmailImportHistory = async () => {
+    const { data } = await supabase
+      .from('email_lead_imports')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (data) setEmailImportHistory(data);
+  };
+
+  const handleSaveEmailConfig = async () => {
+    setEmailSaving(true);
+    try {
+      const res = await fetch('/api/leads/gmail-leads?action=save_config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(emailConfig)
+      });
+      const result = await res.json();
+      if (result.success) {
+        log('update', 'email_config', { email: emailConfig.gmail_email, enabled: emailConfig.enabled, action: 'Configuración email leads actualizada' });
+        setEmailTestResult({ success: true, message: '✅ Configuración guardada exitosamente' });
+        setTimeout(() => setEmailTestResult(null), 4000);
+      } else {
+        setEmailTestResult({ success: false, message: `Error: ${result.error}` });
+      }
+    } catch (err: any) {
+      setEmailTestResult({ success: false, message: `Error de red: ${err.message}` });
+    } finally {
+      setEmailSaving(false);
+    }
+  };
+
+  const handleTestEmailConnection = async () => {
+    setEmailTesting(true);
+    setEmailTestResult(null);
+    try {
+      const res = await fetch('/api/leads/gmail-leads?action=test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gmail_email: emailConfig.gmail_email,
+          gmail_app_password: emailConfig.gmail_app_password,
+          sender_filter: emailConfig.sender_filter
+        })
+      });
+      const result = await res.json();
+      setEmailTestResult(result);
+    } catch (err: any) {
+      setEmailTestResult({ success: false, message: `Error de conexión: ${err.message}` });
+    } finally {
+      setEmailTesting(false);
+    }
+  };
+
+  const handleSyncEmails = async () => {
+    setEmailSyncing(true);
+    setEmailSyncResult(null);
+    try {
+      // Save config first (to ensure latest password is stored)
+      await fetch('/api/leads/gmail-leads?action=save_config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(emailConfig)
+      });
+
+      const res = await fetch('/api/leads/gmail-leads?action=sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const result = await res.json();
+      setEmailSyncResult(result);
+      log('sync', 'email_leads', {
+        processed: result.processed, created: result.created,
+        duplicates: result.duplicates, errors: result.errors,
+        action: 'Sincronización de correos ejecutada'
+      });
+
+      // Reload config (for last_sync_at) and history
+      loadEmailConfig();
+      loadEmailImportHistory();
+    } catch (err: any) {
+      setEmailSyncResult({ success: false, details: [{ status: 'error', reason: err.message }] });
+    } finally {
+      setEmailSyncing(false);
+    }
+  };
+  // ===== End Email Leads Functions =====
 
   const loadNotifications = async () => {
     const { data } = await supabase.from('whatsapp_notifications').select('*').order('created_at', { ascending: false });
@@ -625,6 +768,7 @@ export function AdminModule() {
             { id: 'overview', label: 'General', icon: TrendingUp },
             { id: 'scoring', label: 'Scoring', icon: Award, count: scoringRules.length },
             { id: 'notifications', label: 'Notif. WA', icon: MessageSquare, count: notifications.length },
+            { id: 'email-leads', label: 'Email Leads', icon: Mail },
             { id: 'branches', label: 'Sucursales', icon: Building2, count: branches.length },
             { id: 'settings', label: 'Config', icon: Shield, count: settings.length },
             { id: 'logs', label: 'Logs', icon: Activity, count: logs.length }
@@ -1463,6 +1607,298 @@ export function AdminModule() {
                     <p className="text-sm">Crea tu primera notificación para comenzar</p>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {viewMode === 'email-leads' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                    <Mail className="w-6 h-6 text-red-500" />
+                    Importación de Leads por Email
+                  </h3>
+                  <p className="text-gray-500 mt-1">Conecta tu cuenta de Gmail para importar leads automáticamente desde correos de Yamaha Motor de México.</p>
+                </div>
+              </div>
+
+              {/* Connection Status Banner */}
+              {emailConfig.enabled && emailConfig.gmail_email && (
+                <div className={`rounded-lg p-4 border-2 flex items-center gap-3 ${emailConfig.last_sync_result ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}`}>
+                  <Wifi className="w-5 h-5 text-green-600" />
+                  <div className="flex-1">
+                    <span className="font-semibold text-gray-800">Conectado: {emailConfig.gmail_email}</span>
+                    {emailConfig.last_sync_at && (
+                      <p className="text-sm text-gray-600 mt-0.5">
+                        Última sincronización: {new Date(emailConfig.last_sync_at).toLocaleString('es-MX')} — {emailConfig.last_sync_result}
+                      </p>
+                    )}
+                  </div>
+                  {emailConfig.auto_sync_enabled && (
+                    <span className="px-3 py-1 bg-green-100 text-green-800 text-xs font-bold rounded-full border border-green-300">Auto-Sync ON</span>
+                  )}
+                </div>
+              )}
+
+              {/* Gmail Configuration */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="px-6 py-4 bg-gradient-to-r from-red-50 to-orange-50 border-b border-gray-200">
+                  <h4 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                    <Mail className="w-5 h-5 text-red-500" />
+                    Conexión Gmail
+                  </h4>
+                  <p className="text-sm text-gray-600 mt-1">Configura las credenciales de tu cuenta de Gmail para leer los correos de Yamaha.</p>
+                </div>
+                <div className="p-6 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Correo Gmail</label>
+                      <input
+                        type="email"
+                        value={emailConfig.gmail_email}
+                        onChange={(e) => setEmailConfig({ ...emailConfig, gmail_email: e.target.value })}
+                        className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                        placeholder="tucuenta@gmail.com"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                        Contraseña de Aplicación
+                        <button
+                          onClick={() => setShowAppPasswordHelp(!showAppPasswordHelp)}
+                          className="text-blue-500 hover:text-blue-700 text-xs underline"
+                        >
+                          ¿Cómo obtenerla?
+                        </button>
+                      </label>
+                      <input
+                        type="password"
+                        value={emailConfig.gmail_app_password}
+                        onChange={(e) => setEmailConfig({ ...emailConfig, gmail_app_password: e.target.value })}
+                        className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                        placeholder="xxxx xxxx xxxx xxxx"
+                      />
+                    </div>
+                  </div>
+
+                  {showAppPasswordHelp && (
+                    <div className="bg-blue-50 rounded-lg p-4 border border-blue-200 text-sm space-y-2">
+                      <h5 className="font-bold text-blue-800">📋 Cómo generar una Contraseña de Aplicación:</h5>
+                      <ol className="list-decimal list-inside text-blue-900 space-y-1">
+                        <li>Ve a <a href="https://myaccount.google.com/security" target="_blank" rel="noopener" className="text-blue-600 underline font-medium">myaccount.google.com/security</a></li>
+                        <li>Activa la <strong>Verificación en 2 pasos</strong> si no la tienes</li>
+                        <li>Ve a <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener" className="text-blue-600 underline font-medium">myaccount.google.com/apppasswords</a></li>
+                        <li>En "Nombre de app" escribe: <strong>QuMa ERP</strong></li>
+                        <li>Haz clic en <strong>Crear</strong></li>
+                        <li>Copia la contraseña de 16 caracteres que aparece</li>
+                        <li>Pégala aquí en el campo de Contraseña de Aplicación</li>
+                      </ol>
+                      <p className="text-blue-700 italic mt-2">⚠️ Esta NO es tu contraseña normal de Gmail. Es una contraseña especial para apps.</p>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Email del Remitente (filtro)</label>
+                    <input
+                      type="email"
+                      value={emailConfig.sender_filter}
+                      onChange={(e) => setEmailConfig({ ...emailConfig, sender_filter: e.target.value })}
+                      className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                      placeholder="cliente_potencial@yamaha-motor.com.mx"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Solo se procesarán correos de este remitente.</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setEmailConfig({ ...emailConfig, enabled: !emailConfig.enabled })}
+                        className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${emailConfig.enabled ? 'bg-green-600' : 'bg-gray-200'}`}
+                      >
+                        <span className={`${emailConfig.enabled ? 'translate-x-6' : 'translate-x-1'} inline-block h-5 w-5 transform rounded-full bg-white transition-transform shadow-sm`} />
+                      </button>
+                      <span className="text-sm font-medium text-gray-700">Activar importación</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setEmailConfig({ ...emailConfig, auto_sync_enabled: !emailConfig.auto_sync_enabled })}
+                        className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${emailConfig.auto_sync_enabled ? 'bg-blue-600' : 'bg-gray-200'}`}
+                      >
+                        <span className={`${emailConfig.auto_sync_enabled ? 'translate-x-6' : 'translate-x-1'} inline-block h-5 w-5 transform rounded-full bg-white transition-transform shadow-sm`} />
+                      </button>
+                      <span className="text-sm font-medium text-gray-700">Auto-sincronizar</span>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Intervalo (minutos)</label>
+                      <select
+                        value={emailConfig.sync_interval_minutes}
+                        onChange={(e) => setEmailConfig({ ...emailConfig, sync_interval_minutes: parseInt(e.target.value) })}
+                        className="px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-sm w-full"
+                      >
+                        <option value={15}>Cada 15 min</option>
+                        <option value={30}>Cada 30 min</option>
+                        <option value={60}>Cada 1 hora</option>
+                        <option value={120}>Cada 2 horas</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex flex-wrap gap-3 pt-4 border-t border-gray-200">
+                    <button
+                      onClick={handleSaveEmailConfig}
+                      disabled={emailSaving || !emailConfig.gmail_email}
+                      className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-5 py-2.5 rounded-lg font-semibold transition-all shadow-sm"
+                    >
+                      {emailSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      Guardar Configuración
+                    </button>
+                    <button
+                      onClick={handleTestEmailConnection}
+                      disabled={emailTesting || !emailConfig.gmail_email || !emailConfig.gmail_app_password}
+                      className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 disabled:bg-gray-50 text-gray-700 px-5 py-2.5 rounded-lg font-semibold transition-all border border-gray-300"
+                    >
+                      {emailTesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wifi className="w-4 h-4" />}
+                      Probar Conexión
+                    </button>
+                    <button
+                      onClick={handleSyncEmails}
+                      disabled={emailSyncing || !emailConfig.gmail_email}
+                      className="flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-5 py-2.5 rounded-lg font-semibold transition-all shadow-sm"
+                    >
+                      {emailSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                      {emailSyncing ? 'Sincronizando...' : 'Sincronizar Ahora'}
+                    </button>
+                  </div>
+
+                  {/* Test Result */}
+                  {emailTestResult && (
+                    <div className={`rounded-lg p-4 border-2 flex items-start gap-3 ${emailTestResult.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                      {emailTestResult.success ? <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" /> : <XCircle className="w-5 h-5 text-red-600 mt-0.5" />}
+                      <div>
+                        <p className={`font-semibold ${emailTestResult.success ? 'text-green-800' : 'text-red-800'}`}>{emailTestResult.message}</p>
+                        {emailTestResult.unreadCount !== undefined && (
+                          <p className="text-sm text-green-700 mt-1">
+                            📬 {emailTestResult.unreadCount} correo(s) sin leer de Yamaha pendientes de procesar
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sync Result */}
+                  {emailSyncResult && (
+                    <div className={`rounded-lg p-4 border-2 ${emailSyncResult.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                      <div className="flex items-center gap-2 mb-3">
+                        {emailSyncResult.success ? <CheckCircle className="w-5 h-5 text-green-600" /> : <XCircle className="w-5 h-5 text-red-600" />}
+                        <span className="font-bold text-gray-800">Resultado de Sincronización</span>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="bg-white rounded-lg p-3 border border-gray-200 text-center">
+                          <div className="text-2xl font-bold text-blue-600">{emailSyncResult.processed || 0}</div>
+                          <div className="text-xs text-gray-500">Procesados</div>
+                        </div>
+                        <div className="bg-white rounded-lg p-3 border border-gray-200 text-center">
+                          <div className="text-2xl font-bold text-green-600">{emailSyncResult.created || 0}</div>
+                          <div className="text-xs text-gray-500">Creados</div>
+                        </div>
+                        <div className="bg-white rounded-lg p-3 border border-gray-200 text-center">
+                          <div className="text-2xl font-bold text-yellow-600">{emailSyncResult.duplicates || 0}</div>
+                          <div className="text-xs text-gray-500">Duplicados</div>
+                        </div>
+                        <div className="bg-white rounded-lg p-3 border border-gray-200 text-center">
+                          <div className="text-2xl font-bold text-red-600">{emailSyncResult.errors || 0}</div>
+                          <div className="text-xs text-gray-500">Errores</div>
+                        </div>
+                      </div>
+                      {emailSyncResult.details && emailSyncResult.details.length > 0 && (
+                        <div className="mt-3 space-y-1">
+                          {emailSyncResult.details.map((d: any, i: number) => (
+                            <div key={i} className={`text-sm px-3 py-1.5 rounded flex items-center gap-2 ${
+                              d.status === 'created' ? 'bg-green-100 text-green-800' :
+                              d.status === 'duplicate' ? 'bg-yellow-100 text-yellow-800' :
+                              d.status === 'skipped' ? 'bg-gray-100 text-gray-700' :
+                              'bg-red-100 text-red-800'
+                            }`}>
+                              <span>{d.status === 'created' ? '✅' : d.status === 'duplicate' ? '🔁' : d.status === 'skipped' ? '⏭️' : '❌'}</span>
+                              <span className="font-medium">{d.name || d.subject || 'Correo'}</span>
+                              {d.model && <span className="text-xs opacity-75">— {d.model}</span>}
+                              {d.reason && <span className="text-xs opacity-75">— {d.reason}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Import History */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                  <h4 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-gray-600" />
+                    Historial de Importaciones
+                  </h4>
+                  <button
+                    onClick={loadEmailImportHistory}
+                    className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  {emailImportHistory.length === 0 ? (
+                    <div className="text-center py-12 text-gray-400">
+                      <Mail className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                      <p className="font-medium">No hay importaciones registradas</p>
+                      <p className="text-sm">Sincroniza correos para ver el historial aquí</p>
+                    </div>
+                  ) : (
+                    <table className="w-full min-w-[700px]">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Fecha</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Nombre</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Teléfono</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Modelo</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Estado</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Resultado</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {emailImportHistory.map((imp) => (
+                          <tr key={imp.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                              {new Date(imp.created_at).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            </td>
+                            <td className="px-4 py-3 text-sm font-medium text-gray-800">{imp.lead_name || '—'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{imp.lead_phone || '—'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{imp.model_interested || '—'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{imp.lead_state || '—'}</td>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-full border ${
+                                imp.status === 'success' ? 'bg-green-100 text-green-800 border-green-300' :
+                                imp.status === 'duplicate' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
+                                imp.status === 'skipped' ? 'bg-gray-100 text-gray-700 border-gray-300' :
+                                'bg-red-100 text-red-800 border-red-300'
+                              }`}>
+                                {imp.status === 'success' ? '✅ Creado' :
+                                 imp.status === 'duplicate' ? '🔁 Duplicado' :
+                                 imp.status === 'skipped' ? '⏭️ Omitido' :
+                                 '❌ Error'}
+                              </span>
+                              {imp.error_message && (
+                                <p className="text-xs text-gray-500 mt-1 max-w-xs truncate" title={imp.error_message}>{imp.error_message}</p>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
               </div>
             </div>
           )}
