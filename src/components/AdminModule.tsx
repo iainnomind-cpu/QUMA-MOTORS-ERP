@@ -257,8 +257,7 @@ export function AdminModule() {
   const handleSaveEmailConfig = async () => {
     setEmailSaving(true);
     try {
-      // Guardar directamente via Supabase (sesión autenticada del admin) 
-      // en vez del API endpoint que tiene problemas de permisos con service_role key
+      // Leer config existente para preservar password y datos de sync
       const { data: existing } = await supabase
         .from('system_settings')
         .select('id, setting_value')
@@ -273,47 +272,42 @@ export function AdminModule() {
           ? emailConfig.gmail_app_password
           : currentValue.gmail_app_password || '',
         sender_filter: emailConfig.sender_filter || 'cliente_potencial@yamaha-motor.com.mx',
-        auto_sync_enabled: emailConfig.enabled, // unificado con enabled
-        sync_interval_minutes: 1440, // 1 vez al día (cron de Vercel)
+        auto_sync_enabled: emailConfig.enabled,
+        sync_interval_minutes: 1440,
         enabled: emailConfig.enabled,
         last_sync_at: currentValue.last_sync_at || null,
         last_sync_result: currentValue.last_sync_result || null,
       };
 
       const settingPayload = {
+        setting_key: 'gmail_leads_config',
         setting_value: {
           label: 'Configuración Email Leads (Yamaha)',
           type: 'json',
           value: newConfig
         },
+        category: 'integrations',
+        description: 'Configuración para importar leads desde correos Gmail',
+        editable_by_role: ['admin'],
+        is_public: false,
         updated_at: new Date().toISOString()
       };
 
-      let error;
-      if (existing) {
-        ({ error } = await supabase
-          .from('system_settings')
-          .update(settingPayload)
-          .eq('setting_key', 'gmail_leads_config'));
-      } else {
-        ({ error } = await supabase
-          .from('system_settings')
-          .insert([{
-            setting_key: 'gmail_leads_config',
-            ...settingPayload,
-            category: 'integrations',
-            description: 'Configuración para importar leads desde correos Gmail',
-            editable_by_role: ['admin'],
-            is_public: false
-          }]));
-      }
+      // Usar upsert para que funcione tanto si existe como si no
+      const { error } = await supabase
+        .from('system_settings')
+        .upsert(settingPayload, { onConflict: 'setting_key' });
 
       if (error) {
-        setEmailTestResult({ success: false, message: `Error: ${error.message}` });
+        console.error('Error saving email config:', error);
+        setEmailTestResult({ success: false, message: `Error al guardar: ${error.message}` });
       } else {
         log('update', 'email_config', { email: emailConfig.gmail_email, enabled: emailConfig.enabled, action: 'Configuración email leads actualizada' });
         setEmailTestResult({ success: true, message: '✅ Configuración guardada exitosamente' });
         setTimeout(() => setEmailTestResult(null), 4000);
+        // Recargar para confirmar que se persistió
+        setEmailConfigLoaded(false);
+        loadEmailConfig();
       }
     } catch (err: any) {
       setEmailTestResult({ success: false, message: `Error: ${err.message}` });
@@ -348,12 +342,8 @@ export function AdminModule() {
     setEmailSyncing(true);
     setEmailSyncResult(null);
     try {
-      // Save config first (to ensure latest password is stored)
-      await fetch('/api/leads/gmail-leads?action=save_config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(emailConfig)
-      });
+      // Guardar config primero (directo a Supabase, sin pasar por API)
+      await handleSaveEmailConfig();
 
       const res = await fetch('/api/leads/gmail-leads?action=sync', {
         method: 'POST',
@@ -368,6 +358,7 @@ export function AdminModule() {
       });
 
       // Reload config (for last_sync_at) and history
+      setEmailConfigLoaded(false);
       loadEmailConfig();
       loadEmailImportHistory();
     } catch (err: any) {
