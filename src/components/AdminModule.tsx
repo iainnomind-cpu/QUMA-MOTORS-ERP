@@ -279,24 +279,18 @@ export function AdminModule() {
         last_sync_result: currentValue.last_sync_result || null,
       };
 
-      const settingPayload = {
-        setting_key: 'gmail_leads_config',
-        setting_value: {
-          label: 'Configuración Email Leads (Yamaha)',
-          type: 'json',
-          value: newConfig
-        },
-        category: 'integrations',
-        description: 'Configuración para importar leads desde correos Gmail',
-        editable_by_role: ['admin'],
-        is_public: false,
-        updated_at: new Date().toISOString()
-      };
-
-      // Usar upsert para que funcione tanto si existe como si no
+      // Solo UPDATE — el registro ya existe en la BD
       const { error } = await supabase
         .from('system_settings')
-        .upsert(settingPayload, { onConflict: 'setting_key' });
+        .update({
+          setting_value: {
+            label: 'Configuración Email Leads (Yamaha)',
+            type: 'json',
+            value: newConfig
+          },
+          updated_at: new Date().toISOString()
+        })
+        .eq('setting_key', 'gmail_leads_config');
 
       if (error) {
         console.error('Error saving email config:', error);
