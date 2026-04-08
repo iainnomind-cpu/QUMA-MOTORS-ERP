@@ -348,16 +348,18 @@ async function createLeadFromEmail(parsed: ParsedYamahaLead, gmailMessageId: str
     const errorMsg = err instanceof Error ? err.message : 'Unknown error';
 
     // Log error
-    await supabase.from('email_lead_imports').insert([{
-      gmail_message_id: gmailMessageId,
-      from_email: 'cliente_potencial@yamaha-motor.com.mx',
-      lead_name: parsed.nombre,
-      lead_phone: parsed.telefono,
-      model_interested: parsed.modelo,
-      status: 'error',
-      error_message: errorMsg,
-      synced_by: 'auto'
-    }]).then(() => {}).catch(() => {});
+    try {
+      await supabase.from('email_lead_imports').insert([{
+        gmail_message_id: gmailMessageId,
+        from_email: 'cliente_potencial@yamaha-motor.com.mx',
+        lead_name: parsed.nombre,
+        lead_phone: parsed.telefono,
+        model_interested: parsed.modelo,
+        status: 'error',
+        error_message: errorMsg,
+        synced_by: 'auto'
+      }]);
+    } catch (_) {}
 
     return { success: false, error: errorMsg };
   }
@@ -439,15 +441,17 @@ async function syncGmailLeads(config: GmailConfig): Promise<{
             });
 
             // Log as skipped
-            await supabase.from('email_lead_imports').insert([{
-              gmail_message_id: `uid-${msgUid}-${Date.now()}`,
-              from_email: senderFilter,
-              subject: parsed.subject || '',
-              status: 'skipped',
-              error_message: 'No se pudieron extraer datos del correo',
-              raw_body: (typeof htmlBody === 'string' ? htmlBody : '').substring(0, 5000),
-              synced_by: 'auto'
-            }]).then(() => {}).catch(() => {});
+            try {
+              await supabase.from('email_lead_imports').insert([{
+                gmail_message_id: `uid-${msgUid}-${Date.now()}`,
+                from_email: senderFilter,
+                subject: parsed.subject || '',
+                status: 'skipped',
+                error_message: 'No se pudieron extraer datos del correo',
+                raw_body: (typeof htmlBody === 'string' ? htmlBody : '').substring(0, 5000),
+                synced_by: 'auto'
+              }]);
+            } catch (_) {}
 
             // Mark as seen anyway
             messages.push(msg.uid);
