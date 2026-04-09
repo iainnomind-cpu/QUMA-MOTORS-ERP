@@ -139,6 +139,9 @@ export function Dashboard() {
       leadsQuery = leadsQuery.eq('assigned_agent_id', salesAgentId);
     }
 
+    // Exclude converted leads from counts
+    leadsQuery = leadsQuery.neq('status', 'Convertido');
+
     const { data: leadsData } = await leadsQuery.order('created_at', { ascending: false });
 
     // 2. Catalog Query (Global por ahora, o ajustar si se requiere stock por sucursal)
@@ -210,7 +213,8 @@ export function Dashboard() {
     for (const branch of allBranches) {
       const { data: branchLeads } = await supabase
         .from('leads').select('status, score, origin, timeframe')
-        .eq('branch_id', branch.id);
+        .eq('branch_id', branch.id)
+        .neq('status', 'Convertido');
 
       const { count: clientCount } = await supabase
         .from('clients').select('id', { count: 'exact' })
@@ -264,7 +268,8 @@ export function Dashboard() {
       const { data: agentLeads } = await supabase
         .from('leads')
         .select('status')
-        .eq('assigned_agent_id', agent.id);
+        .eq('assigned_agent_id', agent.id)
+        .neq('status', 'Convertido');
 
       const al = agentLeads || [];
       const branch = allBranches.find(b => b.id === agent.branch_id);
