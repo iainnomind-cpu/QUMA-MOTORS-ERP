@@ -347,7 +347,12 @@ export function SchedulingModule() {
       return;
     }
 
-    const appointmentData = {
+    const servicesArray = newService.services_requested
+      .split(',')
+      .map(s => s.trim())
+      .filter(s => s);
+
+    const appointmentData: Record<string, any> = {
       client_id: newService.client_id,
       client_name: selectedClient.name,
       client_phone: selectedClient.phone,
@@ -356,13 +361,20 @@ export function SchedulingModule() {
       appointment_date: newService.appointment_date,
       service_type: newService.service_type,
       estimated_duration_minutes: newService.estimated_duration_minutes,
-      vehicle_model: newService.vehicle_model,
-      vehicle_plate: newService.vehicle_plate,
+      vehicle_model: newService.vehicle_model || null,
+      vehicle_plate: newService.vehicle_plate || null,
       mileage: newService.mileage ? parseInt(newService.mileage) : null,
-      services_requested: newService.services_requested.split(',').map(s => s.trim()).filter(s => s),
-      notes: newService.notes,
+      services_requested: servicesArray.length > 0 ? servicesArray : null,
+      notes: newService.notes || null,
       status: 'scheduled'
     };
+
+    // Add branch_id if available
+    if (selectedBranchId) {
+      appointmentData.branch_id = selectedBranchId;
+    }
+
+    console.log('📋 Insertando servicio:', JSON.stringify(appointmentData, null, 2));
 
     const { data: newServiceAppointment, error } = await supabase
       .from('service_appointments')
@@ -370,7 +382,14 @@ export function SchedulingModule() {
       .select()
       .single();
 
-    if (!error && newServiceAppointment) {
+    if (error) {
+      console.error('❌ Error al guardar servicio:', error);
+      alert(`Error al agendar servicio: ${error.message}\n\nDetalles: ${error.details || error.hint || 'Sin detalles adicionales'}`);
+      return;
+    }
+
+    if (newServiceAppointment) {
+      console.log('✅ Servicio guardado:', newServiceAppointment);
       setSuccessMessage('Cita de servicio agendada exitosamente');
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
