@@ -615,6 +615,125 @@ async function executeProcessScheduled() {
     return { processed: true, results };
 }
 
+// --- 5. DIAGNOSE CORE LOGIC ---
+async function executeDiagnose() {
+    const results = {
+        env_vars: {
+            PHONE_NUMBER_ID: !!PHONE_NUMBER_ID,
+            META_ACCESS_TOKEN: !!ACCESS_TOKEN,
+            WABA_ID: !!WABA_ID,
+            API_VERSION: API_VERSION,
+            META_APP_ID: !!APP_ID
+        },
+        token: null,
+        phone: null,
+        waba: null,
+        templates: null
+    };
+
+    if (!ACCESS_TOKEN) {
+        return { ...results, error: 'META_ACCESS_TOKEN no está configurado en las variables de entorno' };
+    }
+
+    // 1. Validate Token
+    try {
+        const tokenRes = await fetch(`https://graph.facebook.com/${API_VERSION}/debug_token?input_token=${ACCESS_TOKEN}`, {
+            headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` }
+        });
+        const tokenData = await tokenRes.json();
+        if (tokenData.error) {
+            results.token = { valid: false, error: tokenData.error.message, code: tokenData.error.code };
+        } else if (tokenData.data) {
+            const d = tokenData.data;
+            let expiry_status = 'permanent';
+            if (d.expires_at && d.expires_at !== 0) {
+                const expiryDate = new Date(d.expires_at * 1000);
+                expiry_status = expiryDate > new Date() ? `expires_${expiryDate.toISOString()}` : 'EXPIRED';
+            }
+            results.token = {
+                valid: d.is_valid,
+                type: d.type,
+                app_id: d.app_id,
+                expiry: expiry_status,
+                scopes: d.scopes || []
+            };
+        }
+    } catch (e) {
+        results.token = { valid: false, error: e.message };
+    }
+
+    // 2. Validate Phone Number
+    if (PHONE_NUMBER_ID) {
+        try {
+            const phoneRes = await fetch(`https://graph.facebook.com/${API_VERSION}/${PHONE_NUMBER_ID}?fields=display_phone_number,verified_name,quality_rating,messaging_limit_tier`, {
+                headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` }
+            });
+            const phoneData = await phoneRes.json();
+            if (phoneData.error) {
+                results.phone = { valid: false, error: phoneData.error.message, code: phoneData.error.code };
+            } else {
+                results.phone = {
+                    valid: true,
+                    number: phoneData.display_phone_number,
+                    verified_name: phoneData.verified_name,
+                    quality: phoneData.quality_rating,
+                    messaging_limit: phoneData.messaging_limit_tier
+                };
+            }
+        } catch (e) {
+            results.phone = { valid: false, error: e.message };
+        }
+    }
+
+    // 3. Validate WABA
+    if (WABA_ID) {
+        try {
+            const wabaRes = await fetch(`https://graph.facebook.com/${API_VERSION}/${WABA_ID}?fields=name,message_template_namespace,account_review_status,on_behalf_of_business_info`, {
+                headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` }
+            });
+            const wabaData = await wabaRes.json();
+            if (wabaData.error) {
+                results.waba = { valid: false, error: wabaData.error.message };
+            } else {
+                results.waba = {
+                    valid: true,
+                    name: wabaData.name,
+                    namespace: wabaData.message_template_namespace,
+                    review_status: wabaData.account_review_status
+                };
+            }
+        } catch (e) {
+            results.waba = { valid: false, error: e.message };
+        }
+
+        // 4. List Templates
+        try {
+            const templatesRes = await fetch(`https://graph.facebook.com/${API_VERSION}/${WABA_ID}/message_templates?limit=50`, {
+                headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` }
+            });
+            const templatesData = await templatesRes.json();
+            if (templatesData.error) {
+                results.templates = { valid: false, error: templatesData.error.message };
+            } else {
+                results.templates = {
+                    valid: true,
+                    count: templatesData.data?.length || 0,
+                    list: (templatesData.data || []).map(t => ({
+                        name: t.name,
+                        status: t.status,
+                        language: t.language,
+                        category: t.category
+                    }))
+                };
+            }
+        } catch (e) {
+            results.templates = { valid: false, error: e.message };
+        }
+    }
+
+    return results;
+}
+
 // ==========================================
 // HTTP HANDLER DISPATCHER
 // ==========================================
@@ -662,8 +781,12 @@ export default async function handler(req, res) {
                 const sendTemplateResult = await sendTemplateMessage(to, template, components, language);
                 return res.status(200).json({ success: true, ...sendTemplateResult });
 
+            case 'diagnose':
+                const diagnoseResult = await executeDiagnose();
+                return res.status(200).json({ success: true, ...diagnoseResult });
+
             default:
-                return res.status(400).json({ error: 'Invalid action. Supported: send_campaign, create_template, sync_templates, process_scheduled' });
+                return res.status(400).json({ error: 'Invalid action. Supported: send_campaign, create_template, sync_templates, process_scheduled, diagnose' });
         }
     } catch (error) {
         console.error('API Error:', error);

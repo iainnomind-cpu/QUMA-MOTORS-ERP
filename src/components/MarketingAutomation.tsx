@@ -1,7 +1,7 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase, WhatsAppTemplate, CampaignAudience, AutomatedCampaign, Lead, Client } from '../lib/supabase';
 import { useBranch } from '../contexts/BranchContext';
-import { Upload, Mail, Users, TrendingUp, Send, MessageSquare, Target, Zap, Plus, X, CreditCard as Edit2, Play, Pause, Trash2, Filter, Gift, Loader2, Type, Link as LinkIcon, Phone, BarChart3, Hash, DollarSign, Bike, Clock, MapPin, Tag } from 'lucide-react';
+import { Upload, Mail, Users, TrendingUp, Send, MessageSquare, Target, Zap, Plus, X, CreditCard as Edit2, Play, Pause, Trash2, Filter, Gift, Loader2, Type, Link as LinkIcon, Phone, BarChart3, Hash, DollarSign, Bike, Clock, MapPin, Tag, Activity, Wifi, WifiOff, Shield, AlertTriangle, CheckCircle2, XCircle, RefreshCw } from 'lucide-react';
 
 
 type ViewMode = 'overview' | 'templates' | 'campaigns' | 'audiences';
@@ -74,6 +74,9 @@ export function MarketingAutomation() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [catalogModels, setCatalogModels] = useState<string[]>([]);
   const [financingTypes, setFinancingTypes] = useState<string[]>([]);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [diagnoseResult, setDiagnoseResult] = useState<any>(null);
+  const [showDiagnosePanel, setShowDiagnosePanel] = useState(false);
 
 
   const [showTemplateModal, setShowTemplateModal] = useState(false);
@@ -569,6 +572,21 @@ export function MarketingAutomation() {
     return clients.filter(client => client.status === status).length;
   };
 
+  const handleDiagnose = async () => {
+    try {
+      setDiagnosing(true);
+      setShowDiagnosePanel(true);
+      setDiagnoseResult(null);
+      const res = await fetch('/api/marketing?action=diagnose', { method: 'POST' });
+      const data = await res.json();
+      setDiagnoseResult(data);
+    } catch (e: any) {
+      setDiagnoseResult({ error: `Error de conexión: ${e.message}` });
+    } finally {
+      setDiagnosing(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -576,6 +594,14 @@ export function MarketingAutomation() {
           <Mail className="w-7 h-7 text-blue-600" />
           Marketing Automation & Campañas
         </h2>
+        <button
+          onClick={handleDiagnose}
+          disabled={diagnosing}
+          className="flex items-center gap-2 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white px-4 py-2.5 rounded-lg font-semibold transition-all shadow-md hover:shadow-lg disabled:opacity-50"
+        >
+          {diagnosing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />}
+          Diagnóstico WhatsApp
+        </button>
       </div>
 
       {showSuccess && (
@@ -640,6 +666,206 @@ export function MarketingAutomation() {
         <div className="p-6">
           {viewMode === 'overview' && (
             <div className="space-y-6">
+
+              {/* ====== DIAGNÓSTICO WHATSAPP PANEL ====== */}
+              {showDiagnosePanel && (
+                <div className="bg-gradient-to-br from-slate-50 to-indigo-50 rounded-xl p-6 border-2 border-indigo-200 shadow-sm relative">
+                  <button onClick={() => setShowDiagnosePanel(false)} className="absolute top-3 right-3 text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+                  <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    <Activity className="w-6 h-6 text-indigo-600" />
+                    Diagnóstico de Conexión WhatsApp
+                  </h4>
+
+                  {diagnosing && (
+                    <div className="flex items-center justify-center py-12 gap-3">
+                      <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+                      <span className="text-gray-600 font-medium">Verificando conexión con Meta Business API...</span>
+                    </div>
+                  )}
+
+                  {diagnoseResult && !diagnosing && (
+                    <div className="space-y-4">
+                      {diagnoseResult.error && typeof diagnoseResult.error === 'string' && !diagnoseResult.token && (
+                        <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4 flex items-start gap-3">
+                          <XCircle className="w-6 h-6 text-red-500 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <div className="font-bold text-red-800">Error Crítico</div>
+                            <div className="text-red-700 text-sm">{diagnoseResult.error}</div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Variables de Entorno */}
+                      {diagnoseResult.env_vars && (
+                        <div className="bg-white rounded-lg border border-gray-200 p-4">
+                          <h5 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                            <Shield className="w-4 h-4 text-gray-500" />
+                            Variables de Entorno (Vercel)
+                          </h5>
+                          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                            {Object.entries(diagnoseResult.env_vars).map(([key, val]) => (
+                              <div key={key} className={`px-3 py-2 rounded-lg text-xs font-medium text-center ${
+                                typeof val === 'boolean'
+                                  ? val ? 'bg-green-100 text-green-800 border border-green-300' : 'bg-red-100 text-red-800 border border-red-300'
+                                  : 'bg-blue-100 text-blue-800 border border-blue-300'
+                              }`}>
+                                {key.replace('META_', '').replace('_', ' ')}
+                                <div className="mt-1">
+                                  {typeof val === 'boolean' ? (val ? '✅' : '❌') : String(val)}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Token Status */}
+                      {diagnoseResult.token && (
+                        <div className={`rounded-lg border-2 p-4 ${
+                          diagnoseResult.token.valid
+                            ? 'bg-green-50 border-green-300'
+                            : 'bg-red-50 border-red-300'
+                        }`}>
+                          <div className="flex items-center gap-3 mb-2">
+                            {diagnoseResult.token.valid
+                              ? <CheckCircle2 className="w-6 h-6 text-green-600" />
+                              : <XCircle className="w-6 h-6 text-red-600" />
+                            }
+                            <div>
+                              <span className={`font-bold text-lg ${diagnoseResult.token.valid ? 'text-green-800' : 'text-red-800'}`}>
+                                Token: {diagnoseResult.token.valid ? 'VÁLIDO ✅' : 'INVÁLIDO ❌'}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 text-sm">
+                            <div className="bg-white/60 rounded p-2">
+                              <span className="text-gray-500 text-xs block">Tipo</span>
+                              <span className="font-semibold">{diagnoseResult.token.type || 'N/A'}</span>
+                            </div>
+                            <div className="bg-white/60 rounded p-2">
+                              <span className="text-gray-500 text-xs block">Expiración</span>
+                              <span className={`font-semibold ${diagnoseResult.token.expiry === 'EXPIRED' ? 'text-red-700' : diagnoseResult.token.expiry === 'permanent' ? 'text-green-700' : 'text-orange-700'}`}>
+                                {diagnoseResult.token.expiry === 'permanent' ? '♾️ Nunca' : diagnoseResult.token.expiry === 'EXPIRED' ? '⛔ EXPIRADO' : diagnoseResult.token.expiry?.replace('expires_', '📅 ')}
+                              </span>
+                            </div>
+                            <div className="bg-white/60 rounded p-2">
+                              <span className="text-gray-500 text-xs block">App ID</span>
+                              <span className="font-semibold">{diagnoseResult.token.app_id || 'N/A'}</span>
+                            </div>
+                            <div className="bg-white/60 rounded p-2">
+                              <span className="text-gray-500 text-xs block">Permisos</span>
+                              <span className="font-semibold text-xs">{diagnoseResult.token.scopes?.length || 0} otorgados</span>
+                            </div>
+                          </div>
+                          {!diagnoseResult.token.valid && (
+                            <div className="mt-3 bg-red-100 rounded-lg p-3 text-sm text-red-800">
+                              <AlertTriangle className="w-4 h-4 inline mr-2" />
+                              <strong>Acción requerida:</strong> Ve a Meta Business Suite → Usuarios del Sistema → Genera un nuevo token con expiración "Nunca" y actualízalo en Vercel.
+                              {diagnoseResult.token.error && <div className="mt-1 text-xs opacity-80">Error: {diagnoseResult.token.error}</div>}
+                            </div>
+                          )}
+                          {diagnoseResult.token.valid && diagnoseResult.token.scopes && (
+                            <div className="mt-3 flex flex-wrap gap-1">
+                              {diagnoseResult.token.scopes.map((s: string) => (
+                                <span key={s} className="bg-white/70 px-2 py-0.5 rounded text-xs text-gray-700 border border-gray-200">{s}</span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Phone & WABA */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {diagnoseResult.phone && (
+                          <div className={`rounded-lg border p-4 ${diagnoseResult.phone.valid ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                            <h5 className="font-semibold mb-2 flex items-center gap-2">
+                              <Phone className="w-4 h-4" />
+                              Número de Teléfono
+                            </h5>
+                            {diagnoseResult.phone.valid ? (
+                              <div className="space-y-1 text-sm">
+                                <div>📱 <strong>{diagnoseResult.phone.number}</strong></div>
+                                <div>✅ {diagnoseResult.phone.verified_name}</div>
+                                <div>📊 Calidad: <span className={`font-bold ${diagnoseResult.phone.quality === 'GREEN' ? 'text-green-600' : diagnoseResult.phone.quality === 'YELLOW' ? 'text-yellow-600' : 'text-red-600'}`}>{diagnoseResult.phone.quality}</span></div>
+                                {diagnoseResult.phone.messaging_limit && <div>📤 Límite: {diagnoseResult.phone.messaging_limit}</div>}
+                              </div>
+                            ) : (
+                              <div className="text-red-700 text-sm">
+                                ❌ {diagnoseResult.phone.error}
+                                {diagnoseResult.phone.code === 190 && <div className="mt-1 font-bold">→ Token expirado o inválido</div>}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {diagnoseResult.waba && (
+                          <div className={`rounded-lg border p-4 ${diagnoseResult.waba.valid ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                            <h5 className="font-semibold mb-2 flex items-center gap-2">
+                              <Wifi className="w-4 h-4" />
+                              Cuenta WhatsApp Business
+                            </h5>
+                            {diagnoseResult.waba.valid ? (
+                              <div className="space-y-1 text-sm">
+                                <div>🏢 <strong>{diagnoseResult.waba.name}</strong></div>
+                                <div>📋 Namespace: {diagnoseResult.waba.namespace || 'N/A'}</div>
+                                <div>✅ Estado: {diagnoseResult.waba.review_status || 'APPROVED'}</div>
+                              </div>
+                            ) : (
+                              <div className="text-red-700 text-sm">❌ {diagnoseResult.waba.error}</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Templates */}
+                      {diagnoseResult.templates && diagnoseResult.templates.valid && (
+                        <div className="bg-white rounded-lg border border-gray-200 p-4">
+                          <h5 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                            <MessageSquare className="w-4 h-4 text-gray-500" />
+                            Templates en Meta ({diagnoseResult.templates.count})
+                          </h5>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                            {diagnoseResult.templates.list?.map((t: any, idx: number) => (
+                              <div key={idx} className={`px-3 py-2 rounded-lg text-xs border ${
+                                t.status === 'APPROVED' ? 'bg-green-50 border-green-200 text-green-800'
+                                  : t.status === 'REJECTED' ? 'bg-red-50 border-red-200 text-red-800'
+                                  : 'bg-yellow-50 border-yellow-200 text-yellow-800'
+                              }`}>
+                                <div className="font-semibold">{t.name}</div>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span>{t.status === 'APPROVED' ? '✅' : t.status === 'REJECTED' ? '❌' : '⏳'} {t.status}</span>
+                                  <span className="opacity-60">| {t.language}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Overall Result */}
+                      <div className={`rounded-lg p-4 text-center font-bold text-lg ${
+                        diagnoseResult.token?.valid && diagnoseResult.phone?.valid && diagnoseResult.waba?.valid
+                          ? 'bg-green-100 text-green-800 border-2 border-green-400'
+                          : 'bg-red-100 text-red-800 border-2 border-red-400'
+                      }`}>
+                        {diagnoseResult.token?.valid && diagnoseResult.phone?.valid && diagnoseResult.waba?.valid
+                          ? '✅ Conexión con WhatsApp Business API funcionando correctamente'
+                          : '❌ Hay problemas con la conexión — revisa los detalles arriba'
+                        }
+                      </div>
+
+                      <button
+                        onClick={handleDiagnose}
+                        className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                        Volver a ejecutar diagnóstico
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white">
                   <div className="flex items-center justify-between mb-2">

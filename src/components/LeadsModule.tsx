@@ -339,7 +339,20 @@ export function LeadsModule() {
   };
 
   const handleCreateLead = async () => {
-    const dataToInsert = {
+    // If the current user is a vendedor, find their sales_agent ID to auto-assign the lead
+    let autoAssignAgentId: string | null = null;
+    if (user?.role === 'vendedor') {
+      const { data: agentData } = await supabase
+        .from('sales_agents')
+        .select('id')
+        .eq('email', user.email)
+        .maybeSingle();
+      if (agentData) {
+        autoAssignAgentId = agentData.id;
+      }
+    }
+
+    const dataToInsert: Record<string, any> = {
       name: formData.name,
       phone: formData.phone,
       email: formData.email,
@@ -360,7 +373,8 @@ export function LeadsModule() {
       has_address_proof: false,
       score: 45,
       status: 'Rojo',
-      branch_id: selectedBranchId || user?.branch_id || null
+      branch_id: selectedBranchId || user?.branch_id || null,
+      assigned_agent_id: autoAssignAgentId
     };
 
     const { data: leadData, error } = await supabase
