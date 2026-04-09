@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase, Lead, Client, SalesAgent, LeadInteraction, LeadFollowUp, LeadAttachment } from '../lib/supabase';
 import { useBranch } from '../contexts/BranchContext';
+import { useAuth } from '../contexts/AuthContext';
 import { LeadScoringEngine } from '../lib/scoringEngine';
 import {
   Trello, Phone, Mail, Calendar, Star, TrendingUp, X, User, DollarSign, Clock, Building,
@@ -9,6 +10,7 @@ import {
 
 export function PipelineKanban() {
   const { selectedBranchId } = useBranch();
+  const { user } = useAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,6 +54,24 @@ export function PipelineKanban() {
       query = query.eq('branch_id', selectedBranchId);
     }
 
+    // Vendedor only sees their own leads
+    if (user?.role === 'vendedor') {
+      const { data: agentData } = await supabase
+        .from('sales_agents')
+        .select('id')
+        .eq('email', user.email)
+        .maybeSingle();
+
+      if (agentData) {
+        query = query.eq('assigned_agent_id', agentData.id);
+      } else {
+        query = query.eq('assigned_agent_id', 'none');
+      }
+    }
+
+    // Exclude converted leads from pipeline columns
+    query = query.neq('status', 'Convertido');
+
     const { data, error } = await query.order('score', { ascending: false });
     if (!error && data) {
       setLeads(data);
@@ -65,6 +85,21 @@ export function PipelineKanban() {
 
     if (selectedBranchId) {
       query = query.eq('branch_id', selectedBranchId);
+    }
+
+    // Vendedor only sees their own clients
+    if (user?.role === 'vendedor') {
+      const { data: agentData } = await supabase
+        .from('sales_agents')
+        .select('id')
+        .eq('email', user.email)
+        .maybeSingle();
+
+      if (agentData) {
+        query = query.eq('assigned_agent_id', agentData.id);
+      } else {
+        query = query.eq('assigned_agent_id', 'none');
+      }
     }
 
     const { data } = await query.order('created_at', { ascending: false });
