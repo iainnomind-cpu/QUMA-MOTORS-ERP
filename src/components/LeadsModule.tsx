@@ -182,6 +182,8 @@ export function LeadsModule() {
         query = query.eq('assigned_agent_id', 'none');
       }
     }
+    // Exclude converted leads - they are now clients
+    query = query.neq('status', 'Convertido');
 
     const { data, error } = await query.order('score', { ascending: false });
 
@@ -197,6 +199,21 @@ export function LeadsModule() {
 
     if (selectedBranchId) {
       query = query.eq('branch_id', selectedBranchId);
+    }
+
+    // Vendedor only sees their own clients
+    if (user?.role === 'vendedor') {
+      const { data: agentData } = await supabase
+        .from('sales_agents')
+        .select('id')
+        .eq('email', user.email)
+        .maybeSingle();
+
+      if (agentData) {
+        query = query.eq('assigned_agent_id', agentData.id);
+      } else {
+        query = query.eq('assigned_agent_id', 'none');
+      }
     }
 
     const { data } = await query.order('created_at', { ascending: false });
@@ -862,6 +879,7 @@ export function LeadsModule() {
         purchase_type: convertFormData.purchase_type,
         purchase_price: convertFormData.purchase_price ? parseFloat(convertFormData.purchase_price) : null,
         purchase_notes: convertFormData.purchase_notes,
+        assigned_agent_id: selectedLead.assigned_agent_id || null,
         branch_id: selectedLead.branch_id || selectedBranchId || null
       }])
       .select();
@@ -900,6 +918,16 @@ export function LeadsModule() {
             .eq('id', selectedLead.assigned_agent_id);
         }
       }
+
+      // Mark the lead as Convertido so it's removed from the active leads list
+      await supabase
+        .from('leads')
+        .update({
+          status: 'Convertido',
+          score: 100,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedLead.id);
 
       setShowConvertModal(false);
       setViewMode('leads');

@@ -176,6 +176,7 @@ export interface Client {
   purchase_price: number | null;
   original_interest_model: string | null;
   purchase_notes: string | null;
+  assigned_agent_id: string | null;
   branch_id: string | null;
   created_at: string;
 }
