@@ -166,4 +166,87 @@ export class LeadScoringEngine {
 
     return { score: Math.round(newScore), status: newStatus };
   }
+
+  /**
+   * Calculate the initial score for a newly created lead based on its data.
+   * This replaces the old hardcoded score of 45/Rojo.
+   */
+  static calculateInitialScore(data: {
+    timeframe?: string;
+    financing_type?: string;
+    test_drive_requested?: boolean;
+    origin?: string;
+    model_interested?: string;
+    requires_financing?: boolean;
+    email?: string;
+    phone?: string;
+  }): { score: number; status: 'Verde' | 'Amarillo' | 'Rojo' } {
+    let score = 30; // Base score for any new lead
+
+    // === TIMEFRAME (highest impact) ===
+    if (data.timeframe === 'Inmediato') {
+      score += 30; // Urgent buyer
+    } else if (data.timeframe === '1-3 meses') {
+      score += 15;
+    } else if (data.timeframe === '3-6 meses') {
+      score += 8;
+    }
+    // 'Futuro' or empty = no bonus
+
+    // === FINANCING TYPE ===
+    if (data.financing_type === 'Contado' || data.financing_type === 'contado') {
+      score += 25; // Cash buyer = highest intent
+    } else if (data.financing_type === 'Yamaha Especial') {
+      score += 15;
+    } else if (data.financing_type === 'Corto Plazo Interno') {
+      score += 12;
+    } else if (data.financing_type === 'Tarjeta Bancaria S/I') {
+      score += 10;
+    } else if (data.financing_type && data.financing_type.trim() !== '') {
+      score += 5; // Any other financing = some intent
+    }
+
+    // === TEST DRIVE ===
+    if (data.test_drive_requested) {
+      score += 10; // Shows strong intent
+    }
+
+    // === ORIGIN ===
+    if (data.origin === 'Planta' || data.origin === 'Visita') {
+      score += 8; // Walk-in = high intent
+    } else if (data.origin === 'Referido') {
+      score += 6;
+    } else if (data.origin === 'Chatbot WA') {
+      score += 4;
+    }
+    // Social media, web = no extra bonus
+
+    // === CONTACT INFO COMPLETENESS ===
+    if (data.email && data.email.trim() !== '') {
+      score += 2;
+    }
+    if (data.phone && data.phone.trim() !== '') {
+      score += 3;
+    }
+
+    // === MODEL INTEREST ===
+    if (data.model_interested && data.model_interested.trim() !== '') {
+      score += 5; // Knows what they want
+    }
+
+    // Cap score at 100
+    score = Math.min(100, Math.max(0, score));
+
+    // Determine status
+    let status: 'Verde' | 'Amarillo' | 'Rojo';
+    if (score >= 80) {
+      status = 'Verde';
+    } else if (score >= 60) {
+      status = 'Amarillo';
+    } else {
+      status = 'Rojo';
+    }
+
+    return { score, status };
+  }
 }

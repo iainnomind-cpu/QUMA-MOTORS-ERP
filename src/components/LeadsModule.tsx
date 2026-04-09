@@ -369,6 +369,17 @@ export function LeadsModule() {
       }
     }
 
+    const initialScoring = LeadScoringEngine.calculateInitialScore({
+      timeframe: formData.timeframe,
+      financing_type: formData.financing_type,
+      test_drive_requested: formData.test_drive_requested,
+      origin: formData.origin,
+      model_interested: formData.model_interested,
+      requires_financing: formData.requires_financing,
+      email: formData.email,
+      phone: formData.phone
+    });
+
     const dataToInsert: Record<string, any> = {
       name: formData.name,
       phone: formData.phone,
@@ -388,8 +399,8 @@ export function LeadsModule() {
       has_id_document: false,
       has_income_proof: false,
       has_address_proof: false,
-      score: 45,
-      status: 'Rojo',
+      score: initialScoring.score,
+      status: initialScoring.status,
       branch_id: selectedBranchId || user?.branch_id || null,
       assigned_agent_id: autoAssignAgentId
     };
