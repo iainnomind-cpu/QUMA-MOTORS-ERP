@@ -495,91 +495,152 @@ export function FinanceSimulator() {
                         </select>
                       </div>
 
-                      {!activeCampaign && (
-                        <>
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">Plan de Financiamiento</label>
-                            <div className="space-y-2">
-                              {financingRules.map((rule) => (
-                                <label
-                                  key={rule.id}
-                                  className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer transition-all hover:bg-gray-50"
-                                  style={{
-                                    borderColor: selectedFinancingType === rule.financing_type ? '#16a34a' : '#e5e7eb',
-                                    backgroundColor: selectedFinancingType === rule.financing_type ? '#f0fdf4' : 'white'
-                                  }}
-                                >
-                                  <input
-                                    type="radio"
-                                    name="financing"
-                                    value={rule.financing_type}
-                                    checked={selectedFinancingType === rule.financing_type}
-                                    onChange={(e) => {
-                                      setSelectedFinancingType(e.target.value);
-                                      setTerm(rule.min_term_months);
-                                    }}
-                                    className="w-4 h-4 accent-green-600"
-                                  />
-                                  <div className="flex-1">
-                                    <div className="text-sm font-medium text-gray-700">{rule.financing_type}</div>
-                                    <div className="text-xs text-gray-500 mt-1">{rule.description}</div>
-                                  </div>
-                                </label>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">Plazo (meses)</label>
-                            <div className="grid grid-cols-4 gap-2">
-                              {availableTerms.map((t) => (
-                                <button
-                                  key={t}
-                                  onClick={() => setTerm(t)}
-                                  className={`px-4 py-2 rounded-lg font-semibold transition-all ${term === t
-                                      ? 'bg-green-600 text-white shadow-lg'
-                                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                    }`}
-                                >
-                                  {t}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          {selectedModelData && (
-                            <div>
-                              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                Enganche: ${downPayment.toLocaleString('es-MX')} MXN
-                                {selectedRule && selectedRule.min_down_payment_percent > 0 && (
-                                  <span className="text-xs text-orange-600 ml-2">
-                                    (Mínimo: {selectedRule.min_down_payment_percent}%)
-                                  </span>
-                                )}
-                              </label>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Plan de Financiamiento</label>
+                        <div className="space-y-2">
+                          {financingRules.map((rule) => (
+                            <label
+                              key={rule.id}
+                              className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer transition-all hover:bg-gray-50"
+                              style={{
+                                borderColor: selectedFinancingType === rule.financing_type ? '#16a34a' : '#e5e7eb',
+                                backgroundColor: selectedFinancingType === rule.financing_type ? '#f0fdf4' : 'white'
+                              }}
+                            >
                               <input
-                                type="range"
-                                min={selectedRule ? (selectedModelData.price_cash * selectedRule.min_down_payment_percent) / 100 : 0}
-                                max={selectedModelData.price_cash}
-                                step="5000"
-                                value={downPayment}
-                                onChange={(e) => setDownPayment(Number(e.target.value))}
-                                className="w-full h-3 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-green-600"
+                                type="radio"
+                                name="financing"
+                                value={rule.financing_type}
+                                checked={selectedFinancingType === rule.financing_type}
+                                onChange={(e) => {
+                                  setSelectedFinancingType(e.target.value);
+                                  setActiveCampaign(null);
+                                  setTerm(rule.min_term_months);
+                                }}
+                                className="w-4 h-4 accent-green-600"
                               />
-                              <div className="flex justify-between text-xs text-gray-500 mt-1">
-                                <span>
-                                  ${selectedRule ? ((selectedModelData.price_cash * selectedRule.min_down_payment_percent) / 100).toLocaleString('es-MX') : '0'}
-                                </span>
-                                <span>${selectedModelData.price_cash.toLocaleString('es-MX')}</span>
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-medium text-gray-700">{rule.financing_type}</span>
+                                  <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] font-bold rounded">REGLA FIJA</span>
+                                </div>
+                                <div className="text-xs text-gray-500 mt-1">{rule.description}</div>
                               </div>
-                            </div>
+                            </label>
+                          ))}
+
+                          {financingCampaigns.length > 0 && (
+                            <>
+                              <div className="flex items-center gap-3 my-3">
+                                <div className="flex-1 border-t border-orange-300"></div>
+                                <span className="text-xs font-bold text-orange-600 uppercase tracking-wider">Campañas Variables</span>
+                                <div className="flex-1 border-t border-orange-300"></div>
+                              </div>
+
+                              {financingCampaigns.map((campaign) => {
+                                const campaignKey = `campaign_${campaign.id}`;
+                                const today = new Date().toISOString().split('T')[0];
+                                const isCurrentlyActive = campaign.start_date <= today && campaign.end_date >= today;
+
+                                return (
+                                  <label
+                                    key={campaign.id}
+                                    className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer transition-all hover:bg-orange-50"
+                                    style={{
+                                      borderColor: selectedFinancingType === campaignKey ? '#ea580c' : '#e5e7eb',
+                                      backgroundColor: selectedFinancingType === campaignKey ? '#fff7ed' : 'white'
+                                    }}
+                                  >
+                                    <input
+                                      type="radio"
+                                      name="financing"
+                                      value={campaignKey}
+                                      checked={selectedFinancingType === campaignKey}
+                                      onChange={() => {
+                                        setSelectedFinancingType(campaignKey);
+                                        setActiveCampaign(campaign);
+                                        setTerm(campaign.term_months);
+                                        if (selectedModelData) {
+                                          setDownPayment((selectedModelData.price_cash * campaign.down_payment_percent) / 100);
+                                        }
+                                      }}
+                                      className="w-4 h-4 accent-orange-600"
+                                    />
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-sm font-medium text-gray-700">{campaign.campaign_name}</span>
+                                        <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-bold rounded">CAMPAÑA</span>
+                                        {isCurrentlyActive && (
+                                          <span className="px-1.5 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded">VIGENTE</span>
+                                        )}
+                                      </div>
+                                      <div className="text-xs text-gray-500 mt-1">
+                                        {campaign.provider} • {campaign.term_months} meses • {campaign.down_payment_percent}% enganche
+                                        {campaign.interest_rate === 0 ? ' • Sin Intereses' : ` • ${(campaign.interest_rate * 100).toFixed(1)}% anual`}
+                                      </div>
+                                      <div className="text-[10px] text-gray-400 mt-0.5">
+                                        Vigencia: {new Date(campaign.start_date).toLocaleDateString('es-MX')} - {new Date(campaign.end_date).toLocaleDateString('es-MX')}
+                                      </div>
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                            </>
                           )}
-                        </>
+                        </div>
+                      </div>
+
+                      {!selectedFinancingType.startsWith('campaign_') && (
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Plazo (meses)</label>
+                          <div className="grid grid-cols-4 gap-2">
+                            {availableTerms.map((t) => (
+                              <button
+                                key={t}
+                                onClick={() => setTerm(t)}
+                                className={`px-4 py-2 rounded-lg font-semibold transition-all ${term === t
+                                    ? 'bg-green-600 text-white shadow-lg'
+                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                  }`}
+                              >
+                                {t}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {selectedModelData && !selectedFinancingType.startsWith('campaign_') && (
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Enganche: ${downPayment.toLocaleString('es-MX')} MXN
+                            {selectedRule && selectedRule.min_down_payment_percent > 0 && (
+                              <span className="text-xs text-orange-600 ml-2">
+                                (Mínimo: {selectedRule.min_down_payment_percent}%)
+                              </span>
+                            )}
+                          </label>
+                          <input
+                            type="range"
+                            min={selectedRule ? (selectedModelData.price_cash * selectedRule.min_down_payment_percent) / 100 : 0}
+                            max={selectedModelData.price_cash}
+                            step="5000"
+                            value={downPayment}
+                            onChange={(e) => setDownPayment(Number(e.target.value))}
+                            className="w-full h-3 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-green-600"
+                          />
+                          <div className="flex justify-between text-xs text-gray-500 mt-1">
+                            <span>
+                              ${selectedRule ? ((selectedModelData.price_cash * selectedRule.min_down_payment_percent) / 100).toLocaleString('es-MX') : '0'}
+                            </span>
+                            <span>${selectedModelData.price_cash.toLocaleString('es-MX')}</span>
+                          </div>
+                        </div>
                       )}
                     </div>
 
                     <div className="space-y-4">
-                      {activeCampaign ? (
+                      {selectedFinancingType.startsWith('campaign_') && activeCampaign ? (
                         <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-xl p-6 border-2 border-yellow-300">
                           <div className="flex items-start gap-3 mb-4">
                             <AlertCircle className="w-6 h-6 text-orange-600 flex-shrink-0 mt-1" />
@@ -614,15 +675,36 @@ export function FinanceSimulator() {
                             </div>
                           </div>
 
-                          <div className="bg-orange-100 border border-orange-300 rounded-lg p-4 text-center">
-                            <div className="text-xs text-orange-700 uppercase tracking-wide mb-1">Monto de Enganche</div>
-                            <div className="text-3xl font-bold text-orange-900">
-                              ${downPayment.toLocaleString('es-MX')}
-                            </div>
-                            <div className="text-xs text-orange-700 mt-2">
-                              Contacte a un agente para iniciar el trámite
-                            </div>
-                          </div>
+                          {selectedModelData && (
+                            <>
+                              <div className="bg-orange-100 border border-orange-300 rounded-lg p-4 text-center mb-3">
+                                <div className="text-xs text-orange-700 uppercase tracking-wide mb-1">Monto de Enganche</div>
+                                <div className="text-3xl font-bold text-orange-900">
+                                  ${downPayment.toLocaleString('es-MX')}
+                                </div>
+                              </div>
+
+                              {calculateMonthlyPayment() > 0 && (
+                                <div className="bg-green-600 rounded-lg p-4">
+                                  <div className="text-center">
+                                    <div className="text-xs text-green-100 uppercase tracking-wide mb-1">Mensualidad Estimada</div>
+                                    <div className="text-3xl font-bold text-white">
+                                      ${Math.round(calculateMonthlyPayment()).toLocaleString('es-MX')}
+                                    </div>
+                                    <div className="text-xs text-green-100 mt-1">MXN/mes</div>
+                                  </div>
+                                </div>
+                              )}
+
+                              <button
+                                onClick={saveCalculation}
+                                className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2"
+                              >
+                                <CheckCircle className="w-5 h-5" />
+                                Guardar Cálculo
+                              </button>
+                            </>
+                          )}
 
                           <div className="mt-4 text-xs text-gray-600 text-center">
                             Vigencia: {new Date(activeCampaign.start_date).toLocaleDateString('es-MX')} al {new Date(activeCampaign.end_date).toLocaleDateString('es-MX')}
