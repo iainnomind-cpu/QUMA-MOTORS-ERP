@@ -3,6 +3,7 @@ import { supabase, CatalogItem, FinancingRule, FinancingCampaign } from '../lib/
 import { Calculator, AlertCircle, TrendingUp, DollarSign, Calendar, Percent, Settings, Plus, Edit2, Trash2, CheckCircle, X } from 'lucide-react';
 import { useNotificationContext } from '../context/NotificationContext';
 import { useBranch } from '../contexts/BranchContext';
+import { useAuth } from '../contexts/AuthContext';
 import { createFinancingApprovedNotification } from '../utils/notificationHelpers';
 
 type ViewMode = 'simulator' | 'rules' | 'campaigns';
@@ -10,6 +11,8 @@ type ViewMode = 'simulator' | 'rules' | 'campaigns';
 export function FinanceSimulator() {
   const { addNotification } = useNotificationContext();
   const { selectedBranchId } = useBranch();
+  const { user } = useAuth();
+  const isVendedor = user?.role === 'vendedor';
   const [viewMode, setViewMode] = useState<ViewMode>('simulator');
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [financingRules, setFinancingRules] = useState<FinancingRule[]>([]);
@@ -736,25 +739,27 @@ export function FinanceSimulator() {
             <div className="space-y-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-gray-700">Reglas de Financiamiento Fijas</h3>
-                <button
-                  onClick={() => {
-                    setEditingRule(null);
-                    setNewRule({
-                      financing_type: '',
-                      min_term_months: 6,
-                      max_term_months: 12,
-                      interest_rate: 0,
-                      min_down_payment_percent: 0,
-                      description: '',
-                      active: true
-                    });
-                    setShowRuleModal(true);
-                  }}
-                  className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold transition-all"
-                >
-                  <Plus className="w-5 h-5" />
-                  Nueva Regla
-                </button>
+                {!isVendedor && (
+                  <button
+                    onClick={() => {
+                      setEditingRule(null);
+                      setNewRule({
+                        financing_type: '',
+                        min_term_months: 6,
+                        max_term_months: 12,
+                        interest_rate: 0,
+                        min_down_payment_percent: 0,
+                        description: '',
+                        active: true
+                      });
+                      setShowRuleModal(true);
+                    }}
+                    className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold transition-all"
+                  >
+                    <Plus className="w-5 h-5" />
+                    Nueva Regla
+                  </button>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -765,32 +770,34 @@ export function FinanceSimulator() {
                         <h4 className="font-bold text-gray-800 text-lg mb-2">{rule.financing_type}</h4>
                         <p className="text-sm text-gray-600 mb-3">{rule.description}</p>
                       </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => {
-                            setEditingRule(rule);
-                            setNewRule({
-                              financing_type: rule.financing_type,
-                              min_term_months: rule.min_term_months,
-                              max_term_months: rule.max_term_months,
-                              interest_rate: rule.interest_rate * 100,
-                              min_down_payment_percent: rule.min_down_payment_percent,
-                              description: rule.description || '',
-                              active: rule.active
-                            });
-                            setShowRuleModal(true);
-                          }}
-                          className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteRule(rule.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                      {!isVendedor && (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              setEditingRule(rule);
+                              setNewRule({
+                                financing_type: rule.financing_type,
+                                min_term_months: rule.min_term_months,
+                                max_term_months: rule.max_term_months,
+                                interest_rate: rule.interest_rate * 100,
+                                min_down_payment_percent: rule.min_down_payment_percent,
+                                description: rule.description || '',
+                                active: rule.active
+                              });
+                              setShowRuleModal(true);
+                            }}
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteRule(rule.id)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
@@ -844,30 +851,32 @@ export function FinanceSimulator() {
             <div className="space-y-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-gray-700">Campañas de Financiamiento Variables</h3>
-                <button
-                  onClick={() => {
-                    setNewCampaign({
-                      campaign_name: '',
-                      campaign_type: 'yamaha_special',
-                      provider: 'Yamaha Motor Finance',
-                      start_date: '',
-                      end_date: '',
-                      applicable_models: [],
-                      min_price: 0,
-                      down_payment_percent: 50,
-                      term_months: 12,
-                      interest_rate: 0,
-                      benefits_description: '',
-                      active: true,
-                      priority: 0
-                    });
-                    setShowCampaignModal(true);
-                  }}
-                  className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-semibold transition-all"
-                >
-                  <Plus className="w-5 h-5" />
-                  Nueva Campaña
-                </button>
+                {!isVendedor && (
+                  <button
+                    onClick={() => {
+                      setNewCampaign({
+                        campaign_name: '',
+                        campaign_type: 'yamaha_special',
+                        provider: 'Yamaha Motor Finance',
+                        start_date: '',
+                        end_date: '',
+                        applicable_models: [],
+                        min_price: 0,
+                        down_payment_percent: 50,
+                        term_months: 12,
+                        interest_rate: 0,
+                        benefits_description: '',
+                        active: true,
+                        priority: 0
+                      });
+                      setShowCampaignModal(true);
+                    }}
+                    className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-semibold transition-all"
+                  >
+                    <Plus className="w-5 h-5" />
+                    Nueva Campaña
+                  </button>
+                )}
               </div>
 
               <div className="space-y-4">
@@ -896,14 +905,16 @@ export function FinanceSimulator() {
                           </div>
                           <p className="text-sm text-gray-700 mb-3">{campaign.benefits_description}</p>
                         </div>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleDeleteCampaign(campaign.id)}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
-                          >
-                            <Trash2 className="w-5 h-5" />
-                          </button>
-                        </div>
+                        {!isVendedor && (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleDeleteCampaign(campaign.id)}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
+                            >
+                              <Trash2 className="w-5 h-5" />
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
