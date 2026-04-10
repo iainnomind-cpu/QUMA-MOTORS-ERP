@@ -276,13 +276,18 @@ async function executeCampaignSend(campaignId) {
                 if (isParamError) {
                     let solvedParams = false;
                     let lastRetryErr = sendErr.message;
-                    // Test 1, 0, and 2 parameters in sequence
-                    for (const paramCount of [1, 0, 2]) {
-                        const testParams = [];
-                        for(let k=0; k<paramCount; k++) {
-                           testParams.push({type: 'text', text: k===0 ? (recipient.name || 'Cliente') : ' '});
+                    // Test 1, 0, 2, and 3 parameters in sequence
+                    for (const paramCount of [1, 0, 2, 3]) {
+                        let testComponents;
+                        if (paramCount === 0) {
+                            testComponents = undefined;
+                        } else {
+                            const testParams = [];
+                            for(let k=0; k<paramCount; k++) {
+                               testParams.push({type: 'text', text: k===0 ? (recipient.name || 'Cliente') : 'Asesor'});
+                            }
+                            testComponents = [{ type: 'body', parameters: testParams }];
                         }
-                        const testComponents = testParams.length > 0 ? [{ type: 'body', parameters: testParams }] : [];
                         try {
                             const retryResult = await sendTemplateMessage(phone, template.name, testComponents);
                             const wamid = retryResult.messages?.[0]?.id;
@@ -326,12 +331,18 @@ async function executeCampaignSend(campaignId) {
                                 
                                 let solvedNested = false;
                                 let nestedErrInfo = retryErr.message;
-                                for (const paramCount of [1, 0, 2]) {
-                                    const testParams = [];
-                                    for(let k=0; k<paramCount; k++) {
-                                       testParams.push({type: 'text', text: k===0 ? (recipient.name || 'Cliente') : ' '});
+                                for (const paramCount of [1, 0, 2, 3]) {
+                                    let testComponents;
+                                    if (paramCount === 0) {
+                                        testComponents = undefined;
+                                    } else {
+                                        const testParams = [];
+                                        for(let k=0; k<paramCount; k++) {
+                                           testParams.push({type: 'text', text: k===0 ? (recipient.name || 'Cliente') : 'Asesor'});
+                                        }
+                                        testComponents = [{ type: 'body', parameters: testParams }];
                                     }
-                                    const testComponents = testParams.length > 0 ? [{ type: 'body', parameters: testParams }] : [];
+                                    
                                     try {
                                         const retryResult2 = await sendTemplateMessage(phone, fallbackName, testComponents);
                                         const wamid = retryResult2.messages?.[0]?.id;
@@ -345,7 +356,7 @@ async function executeCampaignSend(campaignId) {
                                     }
                                 }
                                 if (!solvedNested && fallbackName === tryNames[tryNames.length - 1]) {
-                                    errors.push({ phone, error: `Fallo (nombre ok, variables varían) ${fallbackName}: ${nestedErrInfo}` });
+                                    errors.push({ phone, error: `Fallo (nombre ok, variables incompatibles) con ${fallbackName}: ${nestedErrInfo}` });
                                 }
                             } else {
                                 // Ignore intermediate errors, capture the last one if both fail
