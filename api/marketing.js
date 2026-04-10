@@ -264,7 +264,9 @@ async function executeCampaignSend(campaignId) {
                     sendErr.message.includes('parameters mismatch') ||
                     sendErr.message.includes('(#131009)') ||
                     sendErr.message.includes('(#132012)') ||
-                    sendErr.message.includes('Parameter format does not match')
+                    sendErr.message.includes('(#132000)') ||
+                    sendErr.message.includes('Parameter format does not match') ||
+                    sendErr.message.includes('expected number of params')
                 );
                 const isTemplateNotFoundError = sendErr.message && (
                     sendErr.message.includes('(#132001)') ||
@@ -272,13 +274,28 @@ async function executeCampaignSend(campaignId) {
                 );
 
                 if (isParamError) {
-                    try {
-                        const retryResult = await sendTemplateMessage(phone, template.name, []);
-                        const wamid = retryResult.messages?.[0]?.id;
-                        await logMessageToDB(recipient, phone, wamid);
-                        sentCount++;
-                    } catch (retryErr) {
-                        errors.push({ phone, error: retryErr.message });
+                    let solvedParams = false;
+                    let lastRetryErr = sendErr.message;
+                    // Test 1, 0, and 2 parameters in sequence
+                    for (const paramCount of [1, 0, 2]) {
+                        const testParams = [];
+                        for(let k=0; k<paramCount; k++) {
+                           testParams.push({type: 'text', text: k===0 ? (recipient.name || 'Cliente') : ' '});
+                        }
+                        const testComponents = testParams.length > 0 ? [{ type: 'body', parameters: testParams }] : [];
+                        try {
+                            const retryResult = await sendTemplateMessage(phone, template.name, testComponents);
+                            const wamid = retryResult.messages?.[0]?.id;
+                            await logMessageToDB(recipient, phone, wamid);
+                            sentCount++;
+                            solvedParams = true;
+                            break;
+                        } catch (retryErr) {
+                            lastRetryErr = retryErr.message;
+                        }
+                    }
+                    if (!solvedParams) {
+                        errors.push({ phone, error: `Fallo automático de variables: ${lastRetryErr}` });
                     }
                 } else if (isTemplateNotFoundError) {
                     const saneName1 = template.name.toLowerCase().replace(/[^a-z0-9_]/g, '_');
@@ -299,22 +316,36 @@ async function executeCampaignSend(campaignId) {
                             retrySuccess = true;
                             break; // Stop trying
                         } catch (retryErr) {
-                            // If name is correct but params are wrong, retry without params
+                            // If name is correct but params are wrong, retry adaptive loop
                             if (retryErr.message.includes('parameters mismatch') || 
                                 retryErr.message.includes('(#131009)') || 
                                 retryErr.message.includes('(#132012)') || 
-                                retryErr.message.includes('Parameter format does not match')) {
-                                try {
-                                    const retryResult2 = await sendTemplateMessage(phone, fallbackName, []);
-                                    const wamid = retryResult2.messages?.[0]?.id;
-                                    await logMessageToDB(recipient, phone, wamid);
-                                    sentCount++;
-                                    retrySuccess = true;
-                                    break;
-                                } catch (e2) {
-                                    if (fallbackName === tryNames[tryNames.length - 1]) {
-                                        errors.push({ phone, error: `Fallback failed (params) for ${fallbackName}: ` + e2.message });
+                                retryErr.message.includes('(#132000)') ||
+                                retryErr.message.includes('Parameter format does not match') ||
+                                retryErr.message.includes('expected number of params')) {
+                                
+                                let solvedNested = false;
+                                let nestedErrInfo = retryErr.message;
+                                for (const paramCount of [1, 0, 2]) {
+                                    const testParams = [];
+                                    for(let k=0; k<paramCount; k++) {
+                                       testParams.push({type: 'text', text: k===0 ? (recipient.name || 'Cliente') : ' '});
                                     }
+                                    const testComponents = testParams.length > 0 ? [{ type: 'body', parameters: testParams }] : [];
+                                    try {
+                                        const retryResult2 = await sendTemplateMessage(phone, fallbackName, testComponents);
+                                        const wamid = retryResult2.messages?.[0]?.id;
+                                        await logMessageToDB(recipient, phone, wamid);
+                                        sentCount++;
+                                        retrySuccess = true;
+                                        solvedNested = true;
+                                        break;
+                                    } catch (e2) {
+                                        nestedErrInfo = e2.message;
+                                    }
+                                }
+                                if (!solvedNested && fallbackName === tryNames[tryNames.length - 1]) {
+                                    errors.push({ phone, error: `Fallo (nombre ok, variables varían) ${fallbackName}: ${nestedErrInfo}` });
                                 }
                             } else {
                                 // Ignore intermediate errors, capture the last one if both fail
