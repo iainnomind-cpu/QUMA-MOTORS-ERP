@@ -276,17 +276,31 @@ async function executeCampaignSend(campaignId) {
                         errors.push({ phone, error: retryErr.message });
                     }
                 } else if (isTemplateNotFoundError) {
-                    const lowerName = template.name.toLowerCase();
-                    if (lowerName !== template.name) {
+                    const saneName1 = template.name.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+                    const saneName2 = template.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9_]/g, '_');
+                    
+                    let tryNames = [saneName1];
+                    if (saneName1 !== saneName2) tryNames.push(saneName2);
+                    
+                    let retrySuccess = false;
+                    
+                    for (const fallbackName of tryNames) {
+                        if (fallbackName === template.name) continue;
                         try {
-                            const retryResult = await sendTemplateMessage(phone, lowerName, components);
+                            const retryResult = await sendTemplateMessage(phone, fallbackName, components);
                             const wamid = retryResult.messages?.[0]?.id;
                             await logMessageToDB(recipient, phone, wamid);
                             sentCount++;
+                            retrySuccess = true;
+                            break; // Stop trying
                         } catch (retryErr) {
-                            errors.push({ phone, error: retryErr.message });
+                            // Ignore intermediate errors, capture the last one if both fail
+                            if (fallbackName === tryNames[tryNames.length - 1]) {
+                                errors.push({ phone, error: `Fallback failed for ${fallbackName}: ` + retryErr.message });
+                            }
                         }
-                    } else {
+                    }
+                    if (!retrySuccess && tryNames.length === 0) {
                         errors.push({ phone, error: sendErr.message });
                     }
                 } else {

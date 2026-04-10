@@ -2,7 +2,7 @@ import { createContext, useContext, ReactNode, useState, useEffect } from 'react
 import type { Notification } from '../components/NotificationCenter';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { createStagnantLeadNotification, createUpcomingTaskNotification } from '../utils/notificationHelpers';
+import { createStagnantLeadNotification } from '../utils/notificationHelpers';
 
 interface Lead {
   id: string;
@@ -296,57 +296,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
     // Función para verificar tareas próximas
     const checkUpcomingTasks = async () => {
-      if (!user?.id) return;
-
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const now = new Date();
-
-      // Buscar tareas pendientes para hoy o mañana
-      // Asumiendo que existe una tabla 'tasks' o similar. Si no, ajustar query.
-      // Buscar tareas pendientes para hoy o mañana con filtro por rol
-      const { data: tasks } = await supabase
-        .from('tasks')
-        .select('*')
-        .gte('due_date', now.toISOString())
-        .lte('due_date', tomorrow.toISOString())
-        .eq('status', 'pending');
-
-      // Filtrar en memoria o ajustar query compleja (RLS debería manejar esto idealmente, pero reforzamos aquí)
-      const filteredTasks = tasks?.filter(task => {
-        if (user.role === 'admin') return true;
-        if (user.role === 'manager') return task.branch_id === branchId || task.assigned_to === salesAgentId; // Asumiendo tasks tienen branch_id
-        return task.assigned_to === salesAgentId;
-      }) || [];
-
-      if (filteredTasks.length > 0) {
-        const notifiedKey = `quma_notified_tasks_${user.id}`;
-        const notifiedSet = new Set(JSON.parse(localStorage.getItem(notifiedKey) || '[]'));
-        let hasChanges = false;
-
-        filteredTasks.forEach(task => {
-          if (notifiedSet.has(task.id)) return;
-
-          addNotification(createUpcomingTaskNotification({
-            id: task.id,
-            title: task.title,
-            due_date: task.due_date,
-            description: task.description
-          }));
-
-          notifiedSet.add(task.id);
-          hasChanges = true;
-        });
-
-        if (hasChanges) {
-          localStorage.setItem(notifiedKey, JSON.stringify(Array.from(notifiedSet)));
-        }
-      }
+      // The 'tasks' table does not exist in the schema.
+      // Keeping function signature for interval loop but doing nothing.
     };
 
     // Ejecutar verificaciones iniciales
     checkStagnantLeads();
-    checkUpcomingTasks(); // Comentar si no existe tabla tasks aún
+    // checkUpcomingTasks(); // Comentar si no existe tabla tasks aún
 
     // Actualizar notificaciones y verificar leads/tareas periódicamente
     const interval = setInterval(() => {
