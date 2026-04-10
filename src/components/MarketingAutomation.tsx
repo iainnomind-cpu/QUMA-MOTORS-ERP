@@ -415,7 +415,9 @@ export function MarketingAutomation() {
       const data = await response.json();
 
       if (response.ok) {
-        setSuccessMessage(`Campaña enviada: ${data.sent} mensajes. ${data.errors > 0 ? `Errores: ${data.errors}` : ''}`);
+        let msg = `Campaña procesada. Detectados: ${data.initialCount}, Válidos: ${data.filteredCount}. Enviados: ${data.sent} mensajes.`;
+        if (data.errors > 0) msg += ` Errores de envío: ${data.errors}`;
+        setSuccessMessage(msg);
         setShowSuccess(true);
         setTimeout(() => setShowSuccess(false), 5000);
         loadAutomatedCampaigns();

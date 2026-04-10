@@ -194,10 +194,12 @@ async function executeCampaignSend(campaignId) {
         }
     }
 
+    const initialCount = recipients.length;
+
     // JS FILTERING
     recipients = recipients.filter(person => {
         if (!person.phone) return false;
-        let p = person.phone.replace(/[^0-9]/g, '');
+        let p = String(person.phone).replace(/[^0-9]/g, '');
         if (p.length < 10) return false;
         if (filters.score_min && person.score < filters.score_min) return false;
         if (filters.birthday_month === 'current') {
@@ -214,6 +216,8 @@ async function executeCampaignSend(campaignId) {
         }
         return true;
     });
+
+    const filteredCount = recipients.length;
 
     // UPDATE STATUS
     await supabase.from('automated_campaigns').update({ status: 'active' }).eq('id', campaign.id);
@@ -332,7 +336,7 @@ async function executeCampaignSend(campaignId) {
         updated_at: new Date().toISOString()
     }).eq('id', campaign.id);
 
-    return { sent: sentCount, errors };
+    return { sent: sentCount, errors: errors.length, details: errors, initialCount, filteredCount };
 }
 
 // --- 2. CREATE TEMPLATE CORE LOGIC ---
