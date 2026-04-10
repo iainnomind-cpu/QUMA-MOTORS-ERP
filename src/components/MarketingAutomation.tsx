@@ -272,9 +272,16 @@ export function MarketingAutomation() {
   const handleUpdateTemplate = async () => {
     if (!editingTemplate) return;
 
+    const templateDataForDb = {
+      name: newTemplate.name,
+      category: newTemplate.category,
+      message_template: newTemplate.message_template,
+      active: newTemplate.active
+    };
+
     const { error } = await supabase
       .from('whatsapp_templates')
-      .update(newTemplate)
+      .update(templateDataForDb)
       .eq('id', editingTemplate.id);
 
     if (!error) {
