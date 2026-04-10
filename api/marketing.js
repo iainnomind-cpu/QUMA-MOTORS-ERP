@@ -257,7 +257,6 @@ async function executeCampaignSend(campaignId) {
             } catch (sendErr) {
                 // Retry Logic
                 const isParamError = sendErr.message && (
-                    sendErr.message.includes('does not exist in the translation') ||
                     sendErr.message.includes('parameters mismatch') ||
                     sendErr.message.includes('(#131009)')
                 );
@@ -294,9 +293,25 @@ async function executeCampaignSend(campaignId) {
                             retrySuccess = true;
                             break; // Stop trying
                         } catch (retryErr) {
-                            // Ignore intermediate errors, capture the last one if both fail
-                            if (fallbackName === tryNames[tryNames.length - 1]) {
-                                errors.push({ phone, error: `Fallback failed for ${fallbackName}: ` + retryErr.message });
+                            // If name is correct but params are wrong, retry without params
+                            if (retryErr.message.includes('parameters mismatch') || retryErr.message.includes('(#131009)')) {
+                                try {
+                                    const retryResult2 = await sendTemplateMessage(phone, fallbackName, []);
+                                    const wamid = retryResult2.messages?.[0]?.id;
+                                    await logMessageToDB(recipient, phone, wamid);
+                                    sentCount++;
+                                    retrySuccess = true;
+                                    break;
+                                } catch (e2) {
+                                    if (fallbackName === tryNames[tryNames.length - 1]) {
+                                        errors.push({ phone, error: `Fallback failed (params) for ${fallbackName}: ` + e2.message });
+                                    }
+                                }
+                            } else {
+                                // Ignore intermediate errors, capture the last one if both fail
+                                if (fallbackName === tryNames[tryNames.length - 1]) {
+                                    errors.push({ phone, error: `Fallback failed for ${fallbackName}: ` + retryErr.message });
+                                }
                             }
                         }
                     }
