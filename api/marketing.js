@@ -262,7 +262,9 @@ async function executeCampaignSend(campaignId) {
                 // Retry Logic
                 const isParamError = sendErr.message && (
                     sendErr.message.includes('parameters mismatch') ||
-                    sendErr.message.includes('(#131009)')
+                    sendErr.message.includes('(#131009)') ||
+                    sendErr.message.includes('(#132012)') ||
+                    sendErr.message.includes('Parameter format does not match')
                 );
                 const isTemplateNotFoundError = sendErr.message && (
                     sendErr.message.includes('(#132001)') ||
@@ -298,7 +300,10 @@ async function executeCampaignSend(campaignId) {
                             break; // Stop trying
                         } catch (retryErr) {
                             // If name is correct but params are wrong, retry without params
-                            if (retryErr.message.includes('parameters mismatch') || retryErr.message.includes('(#131009)')) {
+                            if (retryErr.message.includes('parameters mismatch') || 
+                                retryErr.message.includes('(#131009)') || 
+                                retryErr.message.includes('(#132012)') || 
+                                retryErr.message.includes('Parameter format does not match')) {
                                 try {
                                     const retryResult2 = await sendTemplateMessage(phone, fallbackName, []);
                                     const wamid = retryResult2.messages?.[0]?.id;
