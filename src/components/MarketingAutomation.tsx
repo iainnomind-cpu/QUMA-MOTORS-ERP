@@ -416,7 +416,12 @@ export function MarketingAutomation() {
 
       if (response.ok) {
         let msg = `Campaña procesada. Detectados: ${data.initialCount}, Válidos: ${data.filteredCount}. Enviados: ${data.sent} mensajes.`;
-        if (data.errors > 0) msg += ` Errores de envío: ${data.errors}`;
+        if (data.errors > 0) {
+          msg += ` Errores de envío: ${data.errors}`;
+          if (data.details && data.details.length > 0) {
+             alert(`Detalle del error de Meta:\n${data.details[0].error}`);
+          }
+        }
         setSuccessMessage(msg);
         setShowSuccess(true);
         setTimeout(() => setShowSuccess(false), 5000);
