@@ -240,8 +240,9 @@ async function executeCampaignSend(campaignId) {
     };
 
     for (const recipient of recipients) {
-        let phone = recipient.phone.replace(/[^0-9]/g, '');
-        if (phone.length === 10) phone = '52' + phone;
+        let phone = String(recipient.phone).replace(/[^0-9]/g, '');
+        // Teléfonos mexicanos a 10 dígitos: WhatsApp Cloud API a menudo requiere el 1 intermedio.
+        if (phone.length === 10) phone = '521' + phone;
 
         try {
             const hasVariables = template.message_template && template.message_template.includes('{{');
